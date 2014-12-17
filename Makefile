@@ -2,8 +2,8 @@
 
 include config.mk
 
-PROJECT  = browser
-SOURCE   = browser.c
+PROJECT  = ripcurl
+SOURCE   = ripcurl.c
 OBJECTS  = ${SOURCE:.c=.o}
 DOBJECTS = ${SOURCE:.c=.do}
 

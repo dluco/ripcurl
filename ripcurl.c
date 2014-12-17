@@ -8,10 +8,10 @@
 /* macros */
 #define die(fmt, ...) { print_err(fmt, ##__VA_ARGS__); exit(EXIT_FAILURE); }
 
-typedef struct _Top Top;
+typedef struct _Ripcurl Ripcurl;
 typedef struct _Browser Browser;
 
-struct _Top {
+struct _Ripcurl {
 	WebKitWebSettings *webkit_settings;
 	SoupSession *soup_session;
 	GList *browsers;
@@ -24,7 +24,7 @@ struct _Browser {
 	WebKitWebView *view;
 };
 
-Top *top;
+Ripcurl *ripcurl;
 
 /* the name we were invoked as */
 static char *progname;
@@ -45,7 +45,7 @@ void browser_destroy(Browser * b);
 
 void history_add(char *uri);
 void history_write(void);
-void top_init(void);
+void ripcurl_init(void);
 void load_data(void);
 void cleanup(void);
 
@@ -81,7 +81,7 @@ WebKitWebView *cb_create_web_view(WebKitWebView *v, WebKitWebFrame *f, Browser *
 {
 	Browser *n = browser_new();
 	/* add to list of browsers */
-	top->browsers = g_list_prepend(top->browsers, n);
+	ripcurl->browsers = g_list_prepend(ripcurl->browsers, n);
 	browser_show(n);
 
 	return n->view;
@@ -150,12 +150,12 @@ void browser_destroy(Browser * b)
 	gtk_widget_destroy(b->window);
 
 	/* remove from list of browsers */
-	top->browsers = g_list_remove(top->browsers, b);
+	ripcurl->browsers = g_list_remove(ripcurl->browsers, b);
 	/* free data */
 	free(b);
 
 	/* quit if no windows left */
-	if (g_list_length(top->browsers) == 0) {
+	if (g_list_length(ripcurl->browsers) == 0) {
 		gtk_main_quit();
 	}
 }
@@ -169,14 +169,14 @@ void history_add(char *uri)
 	}
 
 	/* check if uri is already in history */
-	link = g_list_find_custom(top->history, uri, (GCompareFunc)strcmp);
+	link = g_list_find_custom(ripcurl->history, uri, (GCompareFunc)strcmp);
 	if (link) {
 		/* uri is already present - move to front of list */
-		top->history = g_list_remove_link(top->history, link);
-		top->history = g_list_concat(link, top->history);
+		ripcurl->history = g_list_remove_link(ripcurl->history, link);
+		ripcurl->history = g_list_concat(link, ripcurl->history);
 	} else {
 		/* uri not present - prepend to list */
-		top->history = g_list_prepend(top->history, strdup(uri));
+		ripcurl->history = g_list_prepend(ripcurl->history, strdup(uri));
 	}
 
 	puts(uri);
@@ -199,7 +199,7 @@ void history_write(void)
 	/* create string from history */
 	history_string = g_string_new(NULL);
 
-	for (list = top->history, i = 0; list && (!history_limit || i < history_limit); list = g_list_next(list), i++) {
+	for (list = ripcurl->history, i = 0; list && (!history_limit || i < history_limit); list = g_list_next(list), i++) {
 		uri = g_strconcat((char *)list->data, "\n", NULL);
 		history_string = g_string_prepend(history_string, uri);
 		g_free(uri);
@@ -221,7 +221,7 @@ void history_write_alt(void)
 		return;
 	}
 
-	for (list = g_list_last(top->history), i = 0; list; list = g_list_previous(list), i++) {
+	for (list = g_list_last(ripcurl->history), i = 0; list; list = g_list_previous(list), i++) {
 		if (history_limit && i < history_limit) {
 			/* history limit reached - stop */
 			break;
@@ -234,19 +234,19 @@ void history_write_alt(void)
 	}
 }
 
-void top_init(void)
+void ripcurl_init(void)
 {
 	/* webkit settings */
-	top->webkit_settings = webkit_web_settings_new();
+	ripcurl->webkit_settings = webkit_web_settings_new();
 
 	/* libsoup session */
-	top->soup_session = webkit_get_default_session();
+	ripcurl->soup_session = webkit_get_default_session();
 
 	/* browser list */
-	top->browsers = NULL;
+	ripcurl->browsers = NULL;
 
 	/* history list */
-	top->history = NULL;
+	ripcurl->history = NULL;
 }
 
 void load_data(void)
@@ -255,7 +255,7 @@ void load_data(void)
 
 	/* load cookies */
 	cookie_jar = soup_cookie_jar_text_new(cookie_file, FALSE);
-	soup_session_add_feature(top->soup_session, SOUP_SESSION_FEATURE(cookie_jar));
+	soup_session_add_feature(ripcurl->soup_session, SOUP_SESSION_FEATURE(cookie_jar));
 }
 
 void cleanup(void)
@@ -263,22 +263,22 @@ void cleanup(void)
 	GList *list;
 
 	/* destroy any remaining browsers */
-	while (top->browsers) {
-		browser_destroy(top->browsers->data);
+	while (ripcurl->browsers) {
+		browser_destroy(ripcurl->browsers->data);
 	}
-	g_list_free(top->browsers);
+	g_list_free(ripcurl->browsers);
 
 	/* write history */
 	//history_write();
 	history_write_alt();
 
 	/* clear history */
-	for (list = top->history; list; list = g_list_next(list)) {
+	for (list = ripcurl->history; list; list = g_list_next(list)) {
 		free(list->data);
 	}
-	g_list_free(top->history);
+	g_list_free(ripcurl->history);
 
-	free(top);
+	free(ripcurl);
 }
 
 int main(int argc, char *argv[])
@@ -290,15 +290,15 @@ int main(int argc, char *argv[])
 	gtk_init(&argc, &argv);
 
 	/* init toplevel struct */
-	top = emalloc(sizeof *top);
-	top_init();
+	ripcurl = emalloc(sizeof *ripcurl);
+	ripcurl_init();
 	
 	load_data();
 
 	/* init first browser window */
 	b = browser_new();
 	/* add to list of browsers */
-	top->browsers = g_list_prepend(top->browsers, b);
+	ripcurl->browsers = g_list_prepend(ripcurl->browsers, b);
 
 	if (argc > 1) {
 		browser_load_uri(b, argv[1]);
