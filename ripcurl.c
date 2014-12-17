@@ -36,6 +36,8 @@ void *emalloc(size_t size);
 /* callbacks */
 void cb_destroy(GtkWidget * widget, Browser * b);
 WebKitWebView *cb_create_web_view(WebKitWebView *v, WebKitWebFrame *f, Browser *b);
+void cb_notify_load_status(WebKitWebView *view, GParamSpec *pspec, Browser *b);
+void cb_notify_title(WebKitWebView *view, GParamSpec *pspec, Browser *b);
 
 /* browser functions */
 Browser *browser_new(void);
@@ -87,23 +89,30 @@ WebKitWebView *cb_create_web_view(WebKitWebView *v, WebKitWebFrame *f, Browser *
 	return n->view;
 }
 
-void cb_load_status(WebKitWebView *view, GParamSpec *pspec, Browser *b)
+void cb_notify_load_status(WebKitWebView *view, GParamSpec *pspec, Browser *b)
 {
-	WebKitWebFrame *frame;
 	char *uri;
 
 	switch (webkit_web_view_get_load_status(b->view)) {
 	case WEBKIT_LOAD_COMMITTED:
 		break;
 	case WEBKIT_LOAD_FINISHED:
-		frame = webkit_web_view_get_main_frame(b->view);
 		/* add uri to history */
-		if ((uri = (char *)webkit_web_frame_get_uri(frame))) {
+		if ((uri = (char *)webkit_web_view_get_uri(b->view))) {
 			history_add(uri);
 		}
 		break;
 	default:
 		break;
+	}
+}
+
+void cb_notify_title(WebKitWebView *view, GParamSpec *pspec, Browser *b)
+{
+	const char *title = webkit_web_view_get_title(b->view);
+	if (title) {
+		/* update state */
+		gtk_window_set_title(GTK_WINDOW(b->window), title);
 	}
 }
 
@@ -116,7 +125,7 @@ Browser *browser_new(void)
 	b->view = WEBKIT_WEB_VIEW(webkit_web_view_new());
 
 	/* window */
-	gtk_window_set_title(GTK_WINDOW(b->window), "browser");
+	gtk_window_set_title(GTK_WINDOW(b->window), "ripcurl");
 	g_signal_connect(G_OBJECT(b->window), "destroy",
 					 G_CALLBACK(cb_destroy), b);
 
@@ -126,7 +135,8 @@ Browser *browser_new(void)
 	/* view */
 	gtk_box_pack_start(b->box, GTK_WIDGET(b->view), TRUE, TRUE, 0);
 	g_signal_connect(G_OBJECT(b->view), "create-web-view", G_CALLBACK(cb_create_web_view), b);
-	g_signal_connect(G_OBJECT(b->view), "notify::load-status", G_CALLBACK(cb_load_status), b);
+	g_signal_connect(G_OBJECT(b->view), "notify::load-status", G_CALLBACK(cb_notify_load_status), b);
+	g_signal_connect(G_OBJECT(b->view), "notify::title", G_CALLBACK(cb_notify_title), b);
 
 	return b;
 }
@@ -178,8 +188,6 @@ void history_add(char *uri)
 		/* uri not present - prepend to list */
 		ripcurl->history = g_list_prepend(ripcurl->history, strdup(uri));
 	}
-
-	puts(uri);
 }
 
 void history_read(void)

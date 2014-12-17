@@ -1,1 +1,7 @@
-closing one window close all of them... fix it!
+- read history file
+- statusbar
+	- page uri
+	- link hinting
+	- load status (%)
+	- scroll position (%)
+- bookmarks
