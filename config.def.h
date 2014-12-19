@@ -8,7 +8,3 @@ int history_limit = 0;
 
 /* download settings */
 char *download_dir = "~/Downloads";
-char *download_command = "xterm -e /bin/sh -c \"curl -O '%s'" \
-						  " --user-agent '%s' --referer '%s'" \
-						  " --cookie cookies --cookie-jar cookies '%s';" \
-						  " sleep 5;\"";

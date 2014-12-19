@@ -38,6 +38,9 @@ void cb_destroy(GtkWidget * widget, Browser * b);
 WebKitWebView *cb_create_web_view(WebKitWebView *v, WebKitWebFrame *f, Browser *b);
 void cb_notify_load_status(WebKitWebView *view, GParamSpec *pspec, Browser *b);
 void cb_notify_title(WebKitWebView *view, GParamSpec *pspec, Browser *b);
+gboolean cb_mime_type_decision(WebKitWebView *view, WebKitWebFrame *frame, WebKitNetworkRequest *request, char *mimetype, WebKitWebPolicyDecision *policy_decision, Browser *b);
+gboolean cb_download_requested(WebKitWebView *view, WebKitDownload *download, Browser *b);
+void cb_download_notify_status(WebKitDownload *download, GParamSpec *pspec, Browser *b);
 
 /* browser functions */
 Browser *browser_new(void);
@@ -89,20 +92,20 @@ WebKitWebView *cb_create_web_view(WebKitWebView *v, WebKitWebFrame *f, Browser *
 	return n->view;
 }
 
+gboolean cb_mime_type_decision(WebKitWebView *view, WebKitWebFrame *frame, WebKitNetworkRequest *request, char *mimetype, WebKitWebPolicyDecision *policy_decision, Browser *b)
+{
+	if (!webkit_web_view_can_show_mime_type(b->view, mimetype)) {
+		webkit_web_policy_decision_download(policy_decision);
+		return TRUE;
+	}
+	return FALSE;
+}
+
 gboolean cb_download_requested(WebKitWebView *view, WebKitDownload *download, Browser *b)
 {
-	const char *uri = webkit_download_get_uri(download);
 	const char *suggested_filename = webkit_download_get_suggested_filename(download);
-	const char *referer = webkit_web_view_get_uri(b->view);
 	char *download_path = NULL;
 	char *filename;
-	const char *current_user_agent;
-	char *command;
-
-	if (!uri) {
-		print_err("could not retrieve download uri");
-		return FALSE;
-	}
 
 	/* build download dir if necessary */
 	if (download_dir[0] == '~') {
@@ -114,19 +117,34 @@ gboolean cb_download_requested(WebKitWebView *view, WebKitDownload *download, Br
 	g_mkdir_with_parents(download_path, 0771);
 
 	/* download file */
-	filename = g_build_filename(download_path, suggested_filename ? suggested_filename : uri, NULL);
-	current_user_agent = webkit_web_settings_get_user_agent(ripcurl->webkit_settings);
-	command = g_strdup_printf(download_command, filename, current_user_agent, referer, uri);
+	filename = g_build_filename("file://", download_path, suggested_filename, NULL);
 
-	puts(command);
-
-	g_spawn_command_line_async(command, NULL);
+	webkit_download_set_destination_uri(download, filename);
+	g_signal_connect(G_OBJECT(download), "notify::status", G_CALLBACK(cb_download_notify_status), b);
 
 	g_free(download_path);
 	g_free(filename);
-	g_free(command);
 
 	return TRUE;
+}
+
+void cb_download_notify_status(WebKitDownload *download, GParamSpec *pspec, Browser *b)
+{
+	const char *filename = webkit_download_get_destination_uri(download);;
+
+	switch (webkit_download_get_status(download)) {
+	case WEBKIT_DOWNLOAD_STATUS_STARTED:
+		printf("download started: \"%s\"\n", filename);
+		break;
+	case WEBKIT_DOWNLOAD_STATUS_FINISHED:
+		printf("download finished: \"%s\"\n", filename);
+		break;
+	case WEBKIT_DOWNLOAD_STATUS_ERROR:
+		printf("download error: \"%s\"\n", filename);
+		break;
+	default:
+		break;
+	}
 }
 
 void cb_notify_load_status(WebKitWebView *view, GParamSpec *pspec, Browser *b)
@@ -175,6 +193,7 @@ Browser *browser_new(void)
 	/* view */
 	gtk_box_pack_start(b->box, GTK_WIDGET(b->view), TRUE, TRUE, 0);
 	g_signal_connect(G_OBJECT(b->view), "create-web-view", G_CALLBACK(cb_create_web_view), b);
+	g_signal_connect(G_OBJECT(b->view), "mime-type-policy-decision-requested", G_CALLBACK(cb_mime_type_decision), b);
 	g_signal_connect(G_OBJECT(b->view), "download-requested", G_CALLBACK(cb_download_requested), b);
 	g_signal_connect(G_OBJECT(b->view), "notify::load-status", G_CALLBACK(cb_notify_load_status), b);
 	g_signal_connect(G_OBJECT(b->view), "notify::title", G_CALLBACK(cb_notify_title), b);
