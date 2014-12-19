@@ -1,10 +1,12 @@
 /* files */
-static const char *history_file = "history";
-static const char *cookie_file = "cookies";
+#define BOOKMARKS_FILE	"bookmarks"
+#define HISTORY_FILE	"history"
+#define COOKIE_FILE		"cookies"
 
 /* browser settings */
-char *home_page = "https://duckduckgo.com";
-int history_limit = 0;
+char *user_agent	=	NULL;
+char *home_page		=	"https://duckduckgo.com";
+int history_limit	=	0;
 
 /* download settings */
-char *download_dir = "~/Downloads";
+char *download_dir	=	"~/Downloads";

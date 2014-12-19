@@ -17,7 +17,12 @@ struct _Ripcurl {
 	WebKitWebSettings *webkit_settings;
 	SoupSession *soup_session;
 	GList *browsers;
+	GList *bookmarks;
 	GList *history;
+	char *config_dir;
+	char *bookmarks_file;
+	char *history_file;
+	char *cookie_file;
 };
 
 struct _Browser {
@@ -51,10 +56,18 @@ void browser_show(Browser * b);
 void browser_load_uri(Browser * b, char *uri);
 void browser_destroy(Browser * b);
 
+/* bookmark functions */
+void bookmarks_read(void);
+void bookmarks_write(void);
+
+/* history functions */
 void history_add(char *uri);
 void history_read(void);
 void history_write(void);
+
+/* init, cleanup, and data */
 void ripcurl_init(void);
+void ripcurl_settings(void);
 void load_data(void);
 void cleanup(void);
 
@@ -83,20 +96,14 @@ void *emalloc(size_t size)
 
 void chomp(char *str)
 {
-	int len;
+	char *p;
 
 	if (!str) {
 		return;
 	}
 
-	len = strlen(str);
-	if (str[len-1] == '\n') {
-		str[len-1] = '\0';
-	}
-
-	len = strlen(str);
-	if (str[len-1] == '\r') {
-		str[len-1] = '\0';
+	for (p = &str[strlen(str)-1]; (*p == '\n' || *p == '\r'); p--) {
+		*p = '\0';
 	}
 }
 
@@ -238,8 +245,6 @@ void browser_destroy(Browser * b)
 {
 	webkit_web_view_stop_loading(b->view);
 	/* destroy elements */
-	gtk_widget_destroy(GTK_WIDGET(b->view));
-	gtk_widget_destroy(GTK_WIDGET(b->box));
 	gtk_widget_destroy(b->window);
 
 	/* remove from list of browsers */
@@ -250,6 +255,55 @@ void browser_destroy(Browser * b)
 	/* quit if no windows left */
 	if (g_list_length(ripcurl->browsers) == 0) {
 		gtk_main_quit();
+	}
+}
+
+void bookmarks_read(void)
+{
+	FILE *fp;
+	char *line;
+	size_t nbytes = MAXLINE;
+
+	if (!(fp = fopen(ripcurl->bookmarks_file, "r"))) {
+		/* bookmarks file not found - one will be created on exit */
+		return;
+	}
+
+	line = emalloc(nbytes * sizeof *line);
+
+	while (getline(&line, &nbytes, fp) != -1) {
+		chomp(line);
+		if (strlen(line) == 0) {
+			continue;
+		}
+		ripcurl->bookmarks = g_list_append(ripcurl->bookmarks, strdup(line));
+	}
+
+	if (line) {
+		free(line);
+	}
+
+	if (fclose(fp)) {
+		print_err("unable to close bookmarks file\n");
+	}
+}
+
+void bookmarks_write(void)
+{
+	GList *list;
+	FILE *fp;
+
+	if (!(fp = fopen(ripcurl->bookmarks_file, "w"))) {
+		print_err("unable to open bookmarks file for writing\n");
+		return;
+	}
+
+	for (list = ripcurl->bookmarks; list; list = g_list_next(list)) {
+		fprintf(fp, "%s\n", (char *)list->data);
+	}
+
+	if (fclose(fp)) {
+		print_err("unable to close bookmarks file\n");
 	}
 }
 
@@ -279,7 +333,7 @@ void history_read(void)
 	char *line;
 	size_t nbytes = MAXLINE;
 
-	if (!(fp = fopen(history_file, "r"))) {
+	if (!(fp = fopen(ripcurl->history_file, "r"))) {
 		/* history file not found - one will be created on exit */
 		return;
 	}
@@ -288,7 +342,10 @@ void history_read(void)
 
 	while (getline(&line, &nbytes, fp) != -1) {
 		chomp(line);
-		printf("%s\n", line);
+		if (strlen(line) == 0) {
+			continue;
+		}
+		ripcurl->history = g_list_prepend(ripcurl->history, strdup(line));
 	}
 
 	if (line) {
@@ -306,13 +363,13 @@ void history_write(void)
 	FILE *fp;
 	int i;
 
-	if (!(fp = fopen(history_file, "w"))) {
+	if (!(fp = fopen(ripcurl->history_file, "w"))) {
 		print_err("unable to open history file for writing\n");
 		return;
 	}
 
 	for (list = g_list_last(ripcurl->history), i = 0; list; list = g_list_previous(list), i++) {
-		if (history_limit && i < history_limit) {
+		if (history_limit && i >= history_limit) {
 			/* history limit reached - stop */
 			break;
 		}
@@ -335,8 +392,15 @@ void ripcurl_init(void)
 	/* browser list */
 	ripcurl->browsers = NULL;
 
+	/* bookmarks list */
+	ripcurl->bookmarks = NULL;
+
 	/* history list */
 	ripcurl->history = NULL;
+
+	/* create config dir */
+	ripcurl->config_dir = g_build_filename(g_get_user_config_dir(), "ripcurl", NULL);
+	g_mkdir_with_parents(ripcurl->config_dir, 0771);
 }
 
 void load_data(void)
@@ -344,16 +408,36 @@ void load_data(void)
 	SoupCookieJar *cookie_jar;
 
 	/* load cookies */
-	cookie_jar = soup_cookie_jar_text_new(cookie_file, FALSE);
-	soup_session_add_feature(ripcurl->soup_session, SOUP_SESSION_FEATURE(cookie_jar));
-
-	/* load history */
-	if (!history_file) {
-		print_err("history file not specified\n");
-		return;
+	ripcurl->cookie_file = g_build_filename(ripcurl->config_dir, COOKIE_FILE, NULL);
+	if (!ripcurl->cookie_file) {
+		print_err("error building cookie file path\n");
+	} else {
+		cookie_jar = soup_cookie_jar_text_new(ripcurl->cookie_file, FALSE);
+		soup_session_add_feature(ripcurl->soup_session, SOUP_SESSION_FEATURE(cookie_jar));
 	}
 
-	history_read();
+	/* load bookmarks */
+	ripcurl->bookmarks_file = g_build_filename(ripcurl->config_dir, BOOKMARKS_FILE, NULL);
+	if (!ripcurl->bookmarks_file) {
+		print_err("error building bookmarks file path\n");
+	} else {
+		bookmarks_read();
+	}
+
+	/* load history */
+	ripcurl->history_file = g_build_filename(ripcurl->config_dir, HISTORY_FILE, NULL);
+	if (!ripcurl->history_file) {
+		print_err("error building history file path\n");
+	} else {
+		history_read();
+	}
+}
+
+void ripcurl_settings(void)
+{
+	if (user_agent) {
+		g_object_set(G_OBJECT(ripcurl->webkit_settings), "user-agent", user_agent, NULL);
+	}
 }
 
 void cleanup(void)
@@ -366,14 +450,35 @@ void cleanup(void)
 	}
 	g_list_free(ripcurl->browsers);
 
+	/* free cookie file */
+	g_free(ripcurl->cookie_file);
+
+	/* write bookmarks */
+	if (ripcurl->bookmarks_file) {
+		bookmarks_write();
+	}
+
+	/* clear bookmarks */
+	for (list = ripcurl->bookmarks; list; list = g_list_next(list)) {
+		free(list->data);
+	}
+	g_list_free(ripcurl->bookmarks);
+	g_free(ripcurl->bookmarks_file);
+
 	/* write history */
-	history_write();
+	if (ripcurl->history_file) {
+		history_write();
+	}
 
 	/* clear history */
 	for (list = ripcurl->history; list; list = g_list_next(list)) {
 		free(list->data);
 	}
 	g_list_free(ripcurl->history);
+	g_free(ripcurl->history_file);
+
+	/* free config dir file */
+	g_free(ripcurl->config_dir);
 
 	free(ripcurl);
 }
@@ -389,6 +494,7 @@ int main(int argc, char *argv[])
 	/* init toplevel struct */
 	ripcurl = emalloc(sizeof *ripcurl);
 	ripcurl_init();
+	ripcurl_settings();
 	
 	load_data();
 
