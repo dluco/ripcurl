@@ -8,6 +8,8 @@
 /* macros */
 #define die(fmt, ...) { print_err(fmt, ##__VA_ARGS__); exit(EXIT_FAILURE); }
 
+#define MAXLINE 1024
+
 typedef struct _Ripcurl Ripcurl;
 typedef struct _Browser Browser;
 
@@ -32,6 +34,7 @@ static char *progname;
 /* utility functions */
 void print_err(char *fmt, ...);
 void *emalloc(size_t size);
+void chomp(char *str);
 
 /* callbacks */
 void cb_destroy(GtkWidget * widget, Browser * b);
@@ -49,6 +52,7 @@ void browser_load_uri(Browser * b, char *uri);
 void browser_destroy(Browser * b);
 
 void history_add(char *uri);
+void history_read(void);
 void history_write(void);
 void ripcurl_init(void);
 void load_data(void);
@@ -75,6 +79,25 @@ void *emalloc(size_t size)
 		die("malloc of %zu bytes failed\n", size);
 	}
 	return p;
+}
+
+void chomp(char *str)
+{
+	int len;
+
+	if (!str) {
+		return;
+	}
+
+	len = strlen(str);
+	if (str[len-1] == '\n') {
+		str[len-1] = '\0';
+	}
+
+	len = strlen(str);
+	if (str[len-1] == '\r') {
+		str[len-1] = '\0';
+	}
 }
 
 void cb_destroy(GtkWidget * widget, Browser * b)
@@ -252,33 +275,32 @@ void history_add(char *uri)
 
 void history_read(void)
 {
-	if (!history_file) {
+	FILE *fp;
+	char *line;
+	size_t nbytes = MAXLINE;
+
+	if (!(fp = fopen(history_file, "r"))) {
+		/* history file not found - one will be created on exit */
 		return;
+	}
+
+	line = emalloc(nbytes * sizeof *line);
+
+	while (getline(&line, &nbytes, fp) != -1) {
+		chomp(line);
+		printf("%s\n", line);
+	}
+
+	if (line) {
+		free(line);
+	}
+
+	if (fclose(fp)) {
+		print_err("unable to close history file\n");
 	}
 }
 
 void history_write(void)
-{
-	GString *history_string;
-	GList *list;
-	char *uri;
-	int i;
-
-	/* create string from history */
-	history_string = g_string_new(NULL);
-
-	for (list = ripcurl->history, i = 0; list && (!history_limit || i < history_limit); list = g_list_next(list), i++) {
-		uri = g_strconcat((char *)list->data, "\n", NULL);
-		history_string = g_string_prepend(history_string, uri);
-		g_free(uri);
-	}
-
-	g_file_set_contents(history_file, history_string->str, -1, NULL);
-
-	g_string_free(history_string, TRUE);
-}
-
-void history_write_alt(void)
 {
 	GList *list;
 	FILE *fp;
@@ -324,6 +346,14 @@ void load_data(void)
 	/* load cookies */
 	cookie_jar = soup_cookie_jar_text_new(cookie_file, FALSE);
 	soup_session_add_feature(ripcurl->soup_session, SOUP_SESSION_FEATURE(cookie_jar));
+
+	/* load history */
+	if (!history_file) {
+		print_err("history file not specified\n");
+		return;
+	}
+
+	history_read();
 }
 
 void cleanup(void)
@@ -337,8 +367,7 @@ void cleanup(void)
 	g_list_free(ripcurl->browsers);
 
 	/* write history */
-	//history_write();
-	history_write_alt();
+	history_write();
 
 	/* clear history */
 	for (list = ripcurl->history; list; list = g_list_next(list)) {
