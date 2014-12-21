@@ -53,7 +53,6 @@ struct _Browser {
 	} Statusbar;
 
 	struct {
-		char *title;
 		int progress;
 	} State;
 };
@@ -257,7 +256,6 @@ void cb_wv_notify_title(WebKitWebView *view, GParamSpec *pspec, Browser *b)
 	const char *title = webkit_web_view_get_title(b->UI.view);
 	if (title) {
 		/* update state */
-		b->State.title = (char *)title;
 		browser_update(b);
 	}
 }
@@ -410,7 +408,7 @@ void browser_update_uri(Browser *b)
 		/* FIXME: don't use g_strdup_printf  */
 		text = g_strdup_printf("Loading... %s (%d%%)", (uri) ? uri : "", b->State.progress);
 	} else {
-		text = strdup((uri) ? uri : "");
+		text = strdup((uri) ? uri : "[No name]");
 	}
 
 	gtk_label_set_text(b->Statusbar.text, text);
@@ -444,8 +442,11 @@ void browser_update_position(Browser *b)
 
 void browser_update(Browser *b)
 {
+	const char *title;
+
 	/* update title */
-	gtk_window_set_title(GTK_WINDOW(b->UI.window), (b->State.title) ? b->State.title : "ripcurl");
+	title = webkit_web_view_get_title(b->UI.view);
+	gtk_window_set_title(GTK_WINDOW(b->UI.window), (title) ? title : "ripcurl");
 
 	browser_update_uri(b);
 	browser_update_position(b);
