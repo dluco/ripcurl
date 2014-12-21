@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 #include <gtk/gtk.h>
 #include <webkit/webkit.h>
@@ -235,6 +236,7 @@ void cb_wv_notify_load_status(WebKitWebView *view, GParamSpec *pspec, Browser *b
 		if ((uri = (char *)webkit_web_view_get_uri(b->UI.view))) {
 			history_add(uri);
 		}
+		b->State.progress = 100;
 		break;
 	default:
 		break;
@@ -402,11 +404,18 @@ void browser_load_uri(Browser * b, char *uri)
 void browser_update_uri(Browser *b)
 {
 	const char *uri = webkit_web_view_get_uri(b->UI.view);
+	char *text;
 
-	if (uri) {
-		gtk_label_set_text(b->Statusbar.text, uri);
+	if (b->State.progress > 0 && b->State.progress < 100) {
+		/* FIXME: don't use g_strdup_printf  */
+		text = g_strdup_printf("Loading... %s (%d%%)", (uri) ? uri : "", b->State.progress);
+	} else {
+		text = strdup((uri) ? uri : "");
 	}
 
+	gtk_label_set_text(b->Statusbar.text, text);
+
+	free(text);
 }
 
 void browser_update_position(Browser *b)
@@ -424,8 +433,8 @@ void browser_update_position(Browser *b)
 	} else if (value == 0) {
 		position = strdup("Top");
 	} else {
-		/* TODO */
-		position = strdup("TODO");
+		/* FIXME */
+		position = g_strdup_printf("%2d%%", (int) ceil((value / max) * 100));
 	}
 
 	gtk_label_set_text(b->Statusbar.position, position);
