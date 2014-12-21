@@ -4,15 +4,31 @@
 #include <math.h>
 
 #include <gtk/gtk.h>
+#include <gdk/gdkkeysyms.h>
 #include <webkit/webkit.h>
 
 /* macros */
-#define die(fmt, ...) { print_err(fmt, ##__VA_ARGS__); exit(EXIT_FAILURE); }
+#define LENGTH(x)		(sizeof x / sizeof x[0])
+#define die(fmt, ...)	{ print_err(fmt, ##__VA_ARGS__); exit(EXIT_FAILURE); }
+#define CLEANMASK(mask)	(mask & (GDK_CONTROL_MASK | GDK_SHIFT_MASK))
 
 #define MAXLINE 1024
 
+typedef struct _Arg Arg;
+typedef struct _Shortcut Shortcut;
 typedef struct _Ripcurl Ripcurl;
 typedef struct _Browser Browser;
+
+struct _Arg {
+	int n;
+	void *data;
+};
+
+struct _Shortcut {
+	int mask;
+	int keyval;
+	void (*func)(Browser *b);
+};
 
 struct _Ripcurl {
 	WebKitWebSettings *webkit_settings;
@@ -59,16 +75,18 @@ struct _Browser {
 
 Ripcurl *ripcurl;
 
-/* the name we were invoked as */
-static char *progname;
-
 /* utility functions */
 void print_err(char *fmt, ...);
 void *emalloc(size_t size);
 void chomp(char *str);
 
+/* shortcut functions */
+void sc_close_window(Browser *b);
+void sc_reload(Browser *b);
+
 /* callbacks */
-void cb_destroy(GtkWidget * widget, Browser * b);
+gboolean cb_win_keypress(GtkWidget *widget, GdkEventKey *event, Browser *b);
+void cb_win_destroy(GtkWidget *widget, Browser *b);
 WebKitWebView *cb_wv_create_web_view(WebKitWebView *v, WebKitWebFrame *f, Browser *b);
 void cb_wv_notify_load_status(WebKitWebView *view, GParamSpec *pspec, Browser *b);
 void cb_wv_notify_progress(WebKitWebView *view, GParamSpec *pspec, Browser *b);
@@ -143,7 +161,34 @@ void chomp(char *str)
 	}
 }
 
-void cb_destroy(GtkWidget * widget, Browser * b)
+void sc_close_window(Browser *b)
+{
+	browser_destroy(b);
+}
+
+void sc_reload(Browser *b)
+{
+	webkit_web_view_reload(b->UI.view);
+}
+
+gboolean cb_win_keypress(GtkWidget *widget, GdkEventKey *event, Browser *b)
+{
+	int i;
+	gboolean processed = FALSE;
+
+	for (i = 0; i < LENGTH(shortcuts); i++) {
+		if (gdk_keyval_to_lower(event->keyval) == shortcuts[i].keyval
+				&& CLEANMASK(event->state) == shortcuts[i].mask
+				&& shortcuts[i].func) {
+			shortcuts[i].func(b);
+			processed = TRUE;
+		}
+	}
+
+	return processed;
+}
+
+void cb_win_destroy(GtkWidget * widget, Browser * b)
 {
 	browser_destroy(b);
 }
@@ -292,8 +337,8 @@ Browser *browser_new(void)
 
 	/* window */
 	gtk_window_set_title(GTK_WINDOW(b->UI.window), "ripcurl");
-	g_signal_connect(G_OBJECT(b->UI.window), "destroy",
-					 G_CALLBACK(cb_destroy), b);
+	g_signal_connect(G_OBJECT(b->UI.window), "key-press-event", G_CALLBACK(cb_win_keypress), b);
+	g_signal_connect(G_OBJECT(b->UI.window), "destroy", G_CALLBACK(cb_win_destroy), b);
 
 	/* box */
 	gtk_container_add(GTK_CONTAINER(b->UI.window), GTK_WIDGET(b->UI.box));
@@ -455,6 +500,8 @@ void browser_update(Browser *b)
 void browser_destroy(Browser * b)
 {
 	webkit_web_view_stop_loading(b->UI.view);
+	/* block signal handler for b->UI.window:"destroy" - prevents infinite loop */
+	g_signal_handlers_block_by_func(G_OBJECT(b->UI.window), G_CALLBACK(cb_win_destroy), b);
 	/* destroy elements */
 	gtk_widget_destroy(b->UI.window);
 
@@ -710,8 +757,6 @@ void cleanup(void)
 int main(int argc, char *argv[])
 {
 	Browser *b;
-
-	progname = argv[0];
 
 	gtk_init(&argc, &argv);
 

@@ -18,3 +18,9 @@ char *inputbar_fg_color	=	"#FFFFFF";
 
 gboolean show_scrollbars	=	FALSE;
 gboolean show_statusbar		=	TRUE;
+
+/* shortcuts */
+Shortcut shortcuts[] = {
+	{ GDK_CONTROL_MASK,	GDK_w,	sc_close_window },
+	{ GDK_CONTROL_MASK,	GDK_r,	sc_reload },
+};
