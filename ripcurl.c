@@ -29,6 +29,7 @@ struct _Browser {
 	GtkWidget *window;
 	GtkBox *box;
 	WebKitWebView *view;
+	GtkEntry *inputbar;
 };
 
 Ripcurl *ripcurl;
@@ -49,6 +50,8 @@ void cb_notify_title(WebKitWebView *view, GParamSpec *pspec, Browser *b);
 gboolean cb_mime_type_decision(WebKitWebView *view, WebKitWebFrame *frame, WebKitNetworkRequest *request, char *mimetype, WebKitWebPolicyDecision *policy_decision, Browser *b);
 gboolean cb_download_requested(WebKitWebView *view, WebKitDownload *download, Browser *b);
 void cb_download_notify_status(WebKitDownload *download, GParamSpec *pspec, Browser *b);
+
+void cb_inputbar_activate(GtkEntry *entry, Browser *b);
 
 /* browser functions */
 Browser *browser_new(void);
@@ -204,6 +207,17 @@ void cb_notify_title(WebKitWebView *view, GParamSpec *pspec, Browser *b)
 	}
 }
 
+void cb_inputbar_activate(GtkEntry *entry, Browser *b)
+{
+	char *input = strdup(gtk_entry_get_text(entry));
+
+	/* FIXME: search commands */
+
+	browser_load_uri(b, input);
+
+	free(input);
+}
+
 Browser *browser_new(void)
 {
 	Browser *b = emalloc(sizeof *b);
@@ -211,6 +225,7 @@ Browser *browser_new(void)
 	b->window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
 	b->box = GTK_BOX(gtk_vbox_new(FALSE, 0));
 	b->view = WEBKIT_WEB_VIEW(webkit_web_view_new());
+	b->inputbar = GTK_ENTRY(gtk_entry_new());
 
 	/* window */
 	gtk_window_set_title(GTK_WINDOW(b->window), "ripcurl");
@@ -221,12 +236,22 @@ Browser *browser_new(void)
 	gtk_container_add(GTK_CONTAINER(b->window), GTK_WIDGET(b->box));
 
 	/* view */
-	gtk_box_pack_start(b->box, GTK_WIDGET(b->view), TRUE, TRUE, 0);
 	g_signal_connect(G_OBJECT(b->view), "create-web-view", G_CALLBACK(cb_create_web_view), b);
 	g_signal_connect(G_OBJECT(b->view), "mime-type-policy-decision-requested", G_CALLBACK(cb_mime_type_decision), b);
 	g_signal_connect(G_OBJECT(b->view), "download-requested", G_CALLBACK(cb_download_requested), b);
 	g_signal_connect(G_OBJECT(b->view), "notify::load-status", G_CALLBACK(cb_notify_load_status), b);
 	g_signal_connect(G_OBJECT(b->view), "notify::title", G_CALLBACK(cb_notify_title), b);
+
+	/* inputbar */
+	gtk_entry_set_inner_border(b->inputbar, NULL);
+	gtk_entry_set_has_frame(b->inputbar, FALSE);
+	gtk_editable_set_editable(GTK_EDITABLE(b->inputbar), TRUE);
+
+	g_signal_connect(G_OBJECT(b->inputbar), "activate", G_CALLBACK(cb_inputbar_activate), b);
+	
+	/* packing */
+	gtk_box_pack_start(b->box, GTK_WIDGET(b->view), TRUE, TRUE, 0);
+	gtk_box_pack_start(b->box, GTK_WIDGET(b->inputbar), FALSE, FALSE, 0);
 
 	return b;
 }
@@ -238,7 +263,17 @@ void browser_show(Browser * b)
 
 void browser_load_uri(Browser * b, char *uri)
 {
-	webkit_web_view_load_uri(b->view, uri);
+	char *new_uri = NULL;
+
+	if (!uri) {
+		new_uri = strdup(home_page);
+	} else {
+		new_uri = strdup(uri);
+	}
+
+	webkit_web_view_load_uri(b->view, new_uri);
+
+	free(new_uri);
 }
 
 void browser_destroy(Browser * b)
