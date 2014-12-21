@@ -10,3 +10,11 @@ int history_limit	=	0;
 
 /* download settings */
 char *download_dir	=	"~/Downloads";
+
+/* appearance */
+char *font				=	"monospace normal 9";
+char *inputbar_bg_color	=	"#000000";
+char *inputbar_fg_color	=	"#FFFFFF";
+
+gboolean show_scrollbars	=	FALSE;
+gboolean show_statusbar		=	TRUE;

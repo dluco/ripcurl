@@ -19,17 +19,42 @@ struct _Ripcurl {
 	GList *browsers;
 	GList *bookmarks;
 	GList *history;
-	char *config_dir;
-	char *bookmarks_file;
-	char *history_file;
-	char *cookie_file;
+
+	struct {
+		char *config_dir;
+		char *bookmarks_file;
+		char *history_file;
+		char *cookie_file;
+	} Files;
+
+	struct {
+		GdkColor inputbar_bg;
+		GdkColor inputbar_fg;
+		PangoFontDescription *font;
+	} Style;
 };
 
 struct _Browser {
-	GtkWidget *window;
-	GtkBox *box;
-	WebKitWebView *view;
-	GtkEntry *inputbar;
+	struct {
+		GtkWidget *window;
+		GtkBox *box;
+		GtkScrolledWindow *scrolled_window;
+		WebKitWebView *view;
+		GtkWidget *statusbar;
+		GtkBox *statusbar_entries;
+		GtkEntry *inputbar;
+	} UI;
+
+	struct {
+		GtkLabel *text;
+		GtkLabel *buffer;
+		GtkLabel *position;
+	} Statusbar;
+
+	struct {
+		char *title;
+		int progress;
+	} State;
 };
 
 Ripcurl *ripcurl;
@@ -44,19 +69,26 @@ void chomp(char *str);
 
 /* callbacks */
 void cb_destroy(GtkWidget * widget, Browser * b);
-WebKitWebView *cb_create_web_view(WebKitWebView *v, WebKitWebFrame *f, Browser *b);
-void cb_notify_load_status(WebKitWebView *view, GParamSpec *pspec, Browser *b);
-void cb_notify_title(WebKitWebView *view, GParamSpec *pspec, Browser *b);
-gboolean cb_mime_type_decision(WebKitWebView *view, WebKitWebFrame *frame, WebKitNetworkRequest *request, char *mimetype, WebKitWebPolicyDecision *policy_decision, Browser *b);
-gboolean cb_download_requested(WebKitWebView *view, WebKitDownload *download, Browser *b);
+WebKitWebView *cb_wv_create_web_view(WebKitWebView *v, WebKitWebFrame *f, Browser *b);
+void cb_wv_notify_load_status(WebKitWebView *view, GParamSpec *pspec, Browser *b);
+void cb_wv_notify_progress(WebKitWebView *view, GParamSpec *pspec, Browser *b);
+void cb_wv_notify_title(WebKitWebView *view, GParamSpec *pspec, Browser *b);
+void cb_wv_hover_link(WebKitWebView *view, char *title, char *uri, Browser *b);
+gboolean cb_wv_mime_type_decision(WebKitWebView *view, WebKitWebFrame *frame, WebKitNetworkRequest *request, char *mimetype, WebKitWebPolicyDecision *policy_decision, Browser *b);
+gboolean cb_wv_download_requested(WebKitWebView *view, WebKitDownload *download, Browser *b);
 void cb_download_notify_status(WebKitDownload *download, GParamSpec *pspec, Browser *b);
+void cb_wv_scrolled(GtkAdjustment *adjustment, Browser *b);
 
 void cb_inputbar_activate(GtkEntry *entry, Browser *b);
 
 /* browser functions */
 Browser *browser_new(void);
 void browser_show(Browser * b);
+void browser_apply_settings(Browser *b);
 void browser_load_uri(Browser * b, char *uri);
+void browser_update_uri(Browser *b);
+void browser_update_position(Browser *b);
+void browser_update(Browser *b);
 void browser_destroy(Browser * b);
 
 /* bookmark functions */
@@ -71,6 +103,7 @@ void history_write(void);
 /* init, cleanup, and data */
 void ripcurl_init(void);
 void ripcurl_settings(void);
+void ripcurl_style(void);
 void load_data(void);
 void cleanup(void);
 
@@ -115,26 +148,36 @@ void cb_destroy(GtkWidget * widget, Browser * b)
 	browser_destroy(b);
 }
 
-WebKitWebView *cb_create_web_view(WebKitWebView *v, WebKitWebFrame *f, Browser *b)
+WebKitWebView *cb_wv_create_web_view(WebKitWebView *v, WebKitWebFrame *f, Browser *b)
 {
 	Browser *n = browser_new();
 	/* add to list of browsers */
 	ripcurl->browsers = g_list_prepend(ripcurl->browsers, n);
-	browser_show(n);
 
-	return n->view;
+	return n->UI.view;
 }
 
-gboolean cb_mime_type_decision(WebKitWebView *view, WebKitWebFrame *frame, WebKitNetworkRequest *request, char *mimetype, WebKitWebPolicyDecision *policy_decision, Browser *b)
+void cb_wv_hover_link(WebKitWebView *view, char *title, char *uri, Browser *b)
 {
-	if (!webkit_web_view_can_show_mime_type(b->view, mimetype)) {
+	const char *text;
+
+	if (uri) {
+		gtk_label_set_text(b->Statusbar.text, uri);
+	} else if ((text = webkit_web_view_get_uri(b->UI.view))) {
+		gtk_label_set_text(b->Statusbar.text, text);
+	}
+}
+
+gboolean cb_wv_mime_type_decision(WebKitWebView *view, WebKitWebFrame *frame, WebKitNetworkRequest *request, char *mimetype, WebKitWebPolicyDecision *policy_decision, Browser *b)
+{
+	if (!webkit_web_view_can_show_mime_type(b->UI.view, mimetype)) {
 		webkit_web_policy_decision_download(policy_decision);
 		return TRUE;
 	}
 	return FALSE;
 }
 
-gboolean cb_download_requested(WebKitWebView *view, WebKitDownload *download, Browser *b)
+gboolean cb_wv_download_requested(WebKitWebView *view, WebKitDownload *download, Browser *b)
 {
 	const char *suggested_filename = webkit_download_get_suggested_filename(download);
 	char *download_path = NULL;
@@ -180,31 +223,46 @@ void cb_download_notify_status(WebKitDownload *download, GParamSpec *pspec, Brow
 	}
 }
 
-void cb_notify_load_status(WebKitWebView *view, GParamSpec *pspec, Browser *b)
+void cb_wv_notify_load_status(WebKitWebView *view, GParamSpec *pspec, Browser *b)
 {
 	char *uri;
 
-	switch (webkit_web_view_get_load_status(b->view)) {
+	switch (webkit_web_view_get_load_status(b->UI.view)) {
 	case WEBKIT_LOAD_COMMITTED:
 		break;
 	case WEBKIT_LOAD_FINISHED:
 		/* add uri to history */
-		if ((uri = (char *)webkit_web_view_get_uri(b->view))) {
+		if ((uri = (char *)webkit_web_view_get_uri(b->UI.view))) {
 			history_add(uri);
 		}
 		break;
 	default:
 		break;
 	}
+
+	/* update browser (statusbar, position) */
+	browser_update(b);
 }
 
-void cb_notify_title(WebKitWebView *view, GParamSpec *pspec, Browser *b)
+void cb_wv_notify_progress(WebKitWebView *view, GParamSpec *pspec, Browser *b)
 {
-	const char *title = webkit_web_view_get_title(b->view);
+	b->State.progress = webkit_web_view_get_progress(b->UI.view) * 100;
+	browser_update_uri(b);
+}	
+
+void cb_wv_notify_title(WebKitWebView *view, GParamSpec *pspec, Browser *b)
+{
+	const char *title = webkit_web_view_get_title(b->UI.view);
 	if (title) {
 		/* update state */
-		gtk_window_set_title(GTK_WINDOW(b->window), title);
+		b->State.title = (char *)title;
+		browser_update(b);
 	}
+}
+
+void cb_wv_scrolled(GtkAdjustment *adjustment, Browser *b)
+{
+	browser_update_position(b);
 }
 
 void cb_inputbar_activate(GtkEntry *entry, Browser *b)
@@ -220,45 +278,109 @@ void cb_inputbar_activate(GtkEntry *entry, Browser *b)
 
 Browser *browser_new(void)
 {
+	GtkAdjustment *adjustment;
+
 	Browser *b = emalloc(sizeof *b);
 
-	b->window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-	b->box = GTK_BOX(gtk_vbox_new(FALSE, 0));
-	b->view = WEBKIT_WEB_VIEW(webkit_web_view_new());
-	b->inputbar = GTK_ENTRY(gtk_entry_new());
+	b->UI.window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+	b->UI.box = GTK_BOX(gtk_vbox_new(FALSE, 0));
+	b->UI.scrolled_window = GTK_SCROLLED_WINDOW(gtk_scrolled_window_new(NULL, NULL));
+	b->UI.view = WEBKIT_WEB_VIEW(webkit_web_view_new());
+	b->UI.statusbar = gtk_event_box_new();
+	b->UI.statusbar_entries = GTK_BOX(gtk_hbox_new(FALSE, 0));
+	b->UI.inputbar = GTK_ENTRY(gtk_entry_new());
 
 	/* window */
-	gtk_window_set_title(GTK_WINDOW(b->window), "ripcurl");
-	g_signal_connect(G_OBJECT(b->window), "destroy",
+	gtk_window_set_title(GTK_WINDOW(b->UI.window), "ripcurl");
+	g_signal_connect(G_OBJECT(b->UI.window), "destroy",
 					 G_CALLBACK(cb_destroy), b);
 
 	/* box */
-	gtk_container_add(GTK_CONTAINER(b->window), GTK_WIDGET(b->box));
+	gtk_container_add(GTK_CONTAINER(b->UI.window), GTK_WIDGET(b->UI.box));
 
 	/* view */
-	g_signal_connect(G_OBJECT(b->view), "create-web-view", G_CALLBACK(cb_create_web_view), b);
-	g_signal_connect(G_OBJECT(b->view), "mime-type-policy-decision-requested", G_CALLBACK(cb_mime_type_decision), b);
-	g_signal_connect(G_OBJECT(b->view), "download-requested", G_CALLBACK(cb_download_requested), b);
-	g_signal_connect(G_OBJECT(b->view), "notify::load-status", G_CALLBACK(cb_notify_load_status), b);
-	g_signal_connect(G_OBJECT(b->view), "notify::title", G_CALLBACK(cb_notify_title), b);
+	adjustment = gtk_scrolled_window_get_vadjustment(b->UI.scrolled_window);
+
+	g_signal_connect(G_OBJECT(b->UI.view), "create-web-view", G_CALLBACK(cb_wv_create_web_view), b);
+	g_signal_connect(G_OBJECT(b->UI.view), "hovering-over-link", G_CALLBACK(cb_wv_hover_link), b);
+	g_signal_connect(G_OBJECT(b->UI.view), "mime-type-policy-decision-requested", G_CALLBACK(cb_wv_mime_type_decision), b);
+	g_signal_connect(G_OBJECT(b->UI.view), "download-requested", G_CALLBACK(cb_wv_download_requested), b);
+	g_signal_connect(G_OBJECT(b->UI.view), "notify::load-status", G_CALLBACK(cb_wv_notify_load_status), b);
+	g_signal_connect(G_OBJECT(b->UI.view), "notify::progress", G_CALLBACK(cb_wv_notify_progress), b);
+	g_signal_connect(G_OBJECT(b->UI.view), "notify::title", G_CALLBACK(cb_wv_notify_title), b);
+	g_signal_connect(G_OBJECT(adjustment), "value-changed", G_CALLBACK(cb_wv_scrolled), b);
+
+	gtk_container_add(GTK_CONTAINER(b->UI.scrolled_window), GTK_WIDGET(b->UI.view));
+
+	/* statusbar */
+	b->Statusbar.text = GTK_LABEL(gtk_label_new(NULL));
+	b->Statusbar.buffer = GTK_LABEL(gtk_label_new(NULL));
+	b->Statusbar.position = GTK_LABEL(gtk_label_new(NULL));
+
+	gtk_box_pack_start(b->UI.statusbar_entries, GTK_WIDGET(b->Statusbar.text), TRUE, TRUE, 0);
+	gtk_box_pack_start(b->UI.statusbar_entries, GTK_WIDGET(b->Statusbar.buffer), FALSE, FALSE, 0);
+	gtk_box_pack_start(b->UI.statusbar_entries, GTK_WIDGET(b->Statusbar.position), FALSE, FALSE, 0);
+
+	gtk_container_add(GTK_CONTAINER(b->UI.statusbar), GTK_WIDGET(b->UI.statusbar_entries));
 
 	/* inputbar */
-	gtk_entry_set_inner_border(b->inputbar, NULL);
-	gtk_entry_set_has_frame(b->inputbar, FALSE);
-	gtk_editable_set_editable(GTK_EDITABLE(b->inputbar), TRUE);
-
-	g_signal_connect(G_OBJECT(b->inputbar), "activate", G_CALLBACK(cb_inputbar_activate), b);
+	g_signal_connect(G_OBJECT(b->UI.inputbar), "activate", G_CALLBACK(cb_inputbar_activate), b);
 	
 	/* packing */
-	gtk_box_pack_start(b->box, GTK_WIDGET(b->view), TRUE, TRUE, 0);
-	gtk_box_pack_start(b->box, GTK_WIDGET(b->inputbar), FALSE, FALSE, 0);
+	gtk_box_pack_start(b->UI.box, GTK_WIDGET(b->UI.scrolled_window), TRUE, TRUE, 0);
+	gtk_box_pack_start(b->UI.box, GTK_WIDGET(b->UI.statusbar), FALSE, FALSE, 0);
+	gtk_box_pack_start(b->UI.box, GTK_WIDGET(b->UI.inputbar), FALSE, FALSE, 0);
+
+	browser_apply_settings(b);
+	browser_show(b);
 
 	return b;
 }
 
 void browser_show(Browser * b)
 {
-	gtk_widget_show_all(b->window);
+	gtk_widget_show_all(b->UI.window);
+
+	if (!show_statusbar) {
+		gtk_widget_hide(GTK_WIDGET(b->UI.statusbar));
+	}
+}
+
+void browser_apply_settings(Browser *b)
+{
+	WebKitWebFrame *frame;
+
+	/* view */
+	if (show_scrollbars) {
+		gtk_scrolled_window_set_policy(b->UI.scrolled_window, GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
+	} else {
+		frame = webkit_web_view_get_main_frame(b->UI.view);
+		g_signal_connect(G_OBJECT(frame), "scrollbars-policy-changed", G_CALLBACK(gtk_true), NULL);
+
+		gtk_scrolled_window_set_policy(b->UI.scrolled_window, GTK_POLICY_NEVER, GTK_POLICY_NEVER);
+	}
+
+	/* apply browser settings */
+	webkit_web_view_set_settings(b->UI.view, ripcurl->webkit_settings);
+
+	/* statusbar */
+	gtk_misc_set_alignment(GTK_MISC(b->Statusbar.text), 0.0, 0.0);
+	gtk_misc_set_alignment(GTK_MISC(b->Statusbar.buffer), 1.0, 0.0);
+	gtk_misc_set_alignment(GTK_MISC(b->Statusbar.position), 1.0, 0.0);
+
+	gtk_misc_set_padding(GTK_MISC(b->Statusbar.text), 1.0, 2.0);
+	gtk_misc_set_padding(GTK_MISC(b->Statusbar.buffer), 1.0, 2.0);
+	gtk_misc_set_padding(GTK_MISC(b->Statusbar.position), 1.0, 2.0);
+
+	/* inputbar settings */
+	gtk_entry_set_inner_border(b->UI.inputbar, NULL);
+	gtk_entry_set_has_frame(b->UI.inputbar, FALSE);
+	gtk_editable_set_editable(GTK_EDITABLE(b->UI.inputbar), TRUE);
+
+	gtk_widget_modify_base(GTK_WIDGET(b->UI.inputbar), GTK_STATE_NORMAL, &(ripcurl->Style.inputbar_bg));
+	gtk_widget_modify_text(GTK_WIDGET(b->UI.inputbar), GTK_STATE_NORMAL, &(ripcurl->Style.inputbar_fg));
+	gtk_widget_modify_font(GTK_WIDGET(b->UI.inputbar), ripcurl->Style.font);
+
 }
 
 void browser_load_uri(Browser * b, char *uri)
@@ -271,16 +393,60 @@ void browser_load_uri(Browser * b, char *uri)
 		new_uri = strdup(uri);
 	}
 
-	webkit_web_view_load_uri(b->view, new_uri);
+	webkit_web_view_load_uri(b->UI.view, new_uri);
 
 	free(new_uri);
 }
 
+
+void browser_update_uri(Browser *b)
+{
+	const char *uri = webkit_web_view_get_uri(b->UI.view);
+
+	if (uri) {
+		gtk_label_set_text(b->Statusbar.text, uri);
+	}
+
+}
+
+void browser_update_position(Browser *b)
+{
+	GtkAdjustment *adjustment = gtk_scrolled_window_get_vadjustment(b->UI.scrolled_window);
+	double view_size = gtk_adjustment_get_page_size(adjustment);
+	double value = gtk_adjustment_get_value(adjustment);
+	double max = gtk_adjustment_get_upper(adjustment) - view_size;
+	char *position;
+
+	if (max == 0) {
+		position = strdup("All");
+	} else if (value == max) {
+		position = strdup("Bot");
+	} else if (value == 0) {
+		position = strdup("Top");
+	} else {
+		/* TODO */
+		position = strdup("TODO");
+	}
+
+	gtk_label_set_text(b->Statusbar.position, position);
+
+	free(position);
+}
+
+void browser_update(Browser *b)
+{
+	/* update title */
+	gtk_window_set_title(GTK_WINDOW(b->UI.window), (b->State.title) ? b->State.title : "ripcurl");
+
+	browser_update_uri(b);
+	browser_update_position(b);
+}
+
 void browser_destroy(Browser * b)
 {
-	webkit_web_view_stop_loading(b->view);
+	webkit_web_view_stop_loading(b->UI.view);
 	/* destroy elements */
-	gtk_widget_destroy(b->window);
+	gtk_widget_destroy(b->UI.window);
 
 	/* remove from list of browsers */
 	ripcurl->browsers = g_list_remove(ripcurl->browsers, b);
@@ -299,7 +465,7 @@ void bookmarks_read(void)
 	char *line;
 	size_t nbytes = MAXLINE;
 
-	if (!(fp = fopen(ripcurl->bookmarks_file, "r"))) {
+	if (!(fp = fopen(ripcurl->Files.bookmarks_file, "r"))) {
 		/* bookmarks file not found - one will be created on exit */
 		return;
 	}
@@ -328,7 +494,7 @@ void bookmarks_write(void)
 	GList *list;
 	FILE *fp;
 
-	if (!(fp = fopen(ripcurl->bookmarks_file, "w"))) {
+	if (!(fp = fopen(ripcurl->Files.bookmarks_file, "w"))) {
 		print_err("unable to open bookmarks file for writing\n");
 		return;
 	}
@@ -368,7 +534,7 @@ void history_read(void)
 	char *line;
 	size_t nbytes = MAXLINE;
 
-	if (!(fp = fopen(ripcurl->history_file, "r"))) {
+	if (!(fp = fopen(ripcurl->Files.history_file, "r"))) {
 		/* history file not found - one will be created on exit */
 		return;
 	}
@@ -398,7 +564,7 @@ void history_write(void)
 	FILE *fp;
 	int i;
 
-	if (!(fp = fopen(ripcurl->history_file, "w"))) {
+	if (!(fp = fopen(ripcurl->Files.history_file, "w"))) {
 		print_err("unable to open history file for writing\n");
 		return;
 	}
@@ -434,8 +600,8 @@ void ripcurl_init(void)
 	ripcurl->history = NULL;
 
 	/* create config dir */
-	ripcurl->config_dir = g_build_filename(g_get_user_config_dir(), "ripcurl", NULL);
-	g_mkdir_with_parents(ripcurl->config_dir, 0771);
+	ripcurl->Files.config_dir = g_build_filename(g_get_user_config_dir(), "ripcurl", NULL);
+	g_mkdir_with_parents(ripcurl->Files.config_dir, 0771);
 }
 
 void load_data(void)
@@ -443,25 +609,25 @@ void load_data(void)
 	SoupCookieJar *cookie_jar;
 
 	/* load cookies */
-	ripcurl->cookie_file = g_build_filename(ripcurl->config_dir, COOKIE_FILE, NULL);
-	if (!ripcurl->cookie_file) {
+	ripcurl->Files.cookie_file = g_build_filename(ripcurl->Files.config_dir, COOKIE_FILE, NULL);
+	if (!ripcurl->Files.cookie_file) {
 		print_err("error building cookie file path\n");
 	} else {
-		cookie_jar = soup_cookie_jar_text_new(ripcurl->cookie_file, FALSE);
+		cookie_jar = soup_cookie_jar_text_new(ripcurl->Files.cookie_file, FALSE);
 		soup_session_add_feature(ripcurl->soup_session, SOUP_SESSION_FEATURE(cookie_jar));
 	}
 
 	/* load bookmarks */
-	ripcurl->bookmarks_file = g_build_filename(ripcurl->config_dir, BOOKMARKS_FILE, NULL);
-	if (!ripcurl->bookmarks_file) {
+	ripcurl->Files.bookmarks_file = g_build_filename(ripcurl->Files.config_dir, BOOKMARKS_FILE, NULL);
+	if (!ripcurl->Files.bookmarks_file) {
 		print_err("error building bookmarks file path\n");
 	} else {
 		bookmarks_read();
 	}
 
 	/* load history */
-	ripcurl->history_file = g_build_filename(ripcurl->config_dir, HISTORY_FILE, NULL);
-	if (!ripcurl->history_file) {
+	ripcurl->Files.history_file = g_build_filename(ripcurl->Files.config_dir, HISTORY_FILE, NULL);
+	if (!ripcurl->Files.history_file) {
 		print_err("error building history file path\n");
 	} else {
 		history_read();
@@ -475,6 +641,16 @@ void ripcurl_settings(void)
 	}
 }
 
+void ripcurl_style(void)
+{
+	/* parse colors */
+	gdk_color_parse(inputbar_bg_color, &(ripcurl->Style.inputbar_bg));
+	gdk_color_parse(inputbar_fg_color, &(ripcurl->Style.inputbar_fg));
+
+	/* font */
+	ripcurl->Style.font = pango_font_description_from_string(font);
+}
+
 void cleanup(void)
 {
 	GList *list;
@@ -486,10 +662,10 @@ void cleanup(void)
 	g_list_free(ripcurl->browsers);
 
 	/* free cookie file */
-	g_free(ripcurl->cookie_file);
+	g_free(ripcurl->Files.cookie_file);
 
 	/* write bookmarks */
-	if (ripcurl->bookmarks_file) {
+	if (ripcurl->Files.bookmarks_file) {
 		bookmarks_write();
 	}
 
@@ -498,10 +674,10 @@ void cleanup(void)
 		free(list->data);
 	}
 	g_list_free(ripcurl->bookmarks);
-	g_free(ripcurl->bookmarks_file);
+	g_free(ripcurl->Files.bookmarks_file);
 
 	/* write history */
-	if (ripcurl->history_file) {
+	if (ripcurl->Files.history_file) {
 		history_write();
 	}
 
@@ -510,10 +686,13 @@ void cleanup(void)
 		free(list->data);
 	}
 	g_list_free(ripcurl->history);
-	g_free(ripcurl->history_file);
+	g_free(ripcurl->Files.history_file);
 
 	/* free config dir file */
-	g_free(ripcurl->config_dir);
+	g_free(ripcurl->Files.config_dir);
+
+	/* free font */
+	pango_font_description_free(ripcurl->Style.font);
 
 	free(ripcurl);
 }
@@ -530,6 +709,7 @@ int main(int argc, char *argv[])
 	ripcurl = emalloc(sizeof *ripcurl);
 	ripcurl_init();
 	ripcurl_settings();
+	ripcurl_style();
 	
 	load_data();
 
@@ -543,8 +723,6 @@ int main(int argc, char *argv[])
 	} else {
 		browser_load_uri(b, home_page);
 	}
-
-	browser_show(b);
 
 	/* start GTK+ main loop */
 	gtk_main();
