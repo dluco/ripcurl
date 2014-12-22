@@ -28,7 +28,8 @@ struct _Arg {
 struct _Shortcut {
 	int mask;
 	int keyval;
-	void (*func)(Browser *b);
+	void (*func)(Browser *b, const Arg *arg);
+	const Arg arg;
 };
 
 struct _Ripcurl {
@@ -87,8 +88,8 @@ int asprintf(char **str, char *fmt, ...);
 void chomp(char *str);
 
 /* shortcut functions */
-void sc_close_window(Browser *b);
-void sc_reload(Browser *b);
+void sc_close_window(Browser *b, const Arg *arg);
+void sc_reload(Browser *b, const Arg *arg);
 
 /* callbacks */
 gboolean cb_win_keypress(GtkWidget *widget, GdkEventKey *event, Browser *b);
@@ -193,12 +194,12 @@ void chomp(char *str)
 	}
 }
 
-void sc_close_window(Browser *b)
+void sc_close_window(Browser *b, const Arg *arg)
 {
 	browser_destroy(b);
 }
 
-void sc_reload(Browser *b)
+void sc_reload(Browser *b, const Arg *arg)
 {
 	webkit_web_view_reload(b->UI.view);
 }
@@ -212,7 +213,7 @@ gboolean cb_win_keypress(GtkWidget *widget, GdkEventKey *event, Browser *b)
 		if (gdk_keyval_to_lower(event->keyval) == shortcuts[i].keyval
 				&& CLEANMASK(event->state) == shortcuts[i].mask
 				&& shortcuts[i].func) {
-			shortcuts[i].func(b);
+			shortcuts[i].func(b, &(shortcuts[i].arg));
 			processed = TRUE;
 		}
 	}
