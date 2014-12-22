@@ -15,6 +15,13 @@
 
 #define MAXLINE 1024
 
+/* enums */
+enum {
+	ZOOM_IN,
+	ZOOM_OUT,
+	ZOOM_RESET,
+};
+
 typedef struct _Arg Arg;
 typedef struct _Shortcut Shortcut;
 typedef struct _Ripcurl Ripcurl;
@@ -90,6 +97,7 @@ void chomp(char *str);
 /* shortcut functions */
 void sc_close_window(Browser *b, const Arg *arg);
 void sc_reload(Browser *b, const Arg *arg);
+void sc_zoom(Browser *b, const Arg *arg);
 
 /* callbacks */
 gboolean cb_win_keypress(GtkWidget *widget, GdkEventKey *event, Browser *b);
@@ -111,6 +119,7 @@ Browser *browser_new(void);
 void browser_show(Browser * b);
 void browser_apply_settings(Browser *b);
 void browser_load_uri(Browser * b, char *uri);
+void browser_zoom(Browser * b, int mode);
 void browser_update_uri(Browser *b);
 void browser_update_position(Browser *b);
 void browser_update(Browser *b);
@@ -201,7 +210,16 @@ void sc_close_window(Browser *b, const Arg *arg)
 
 void sc_reload(Browser *b, const Arg *arg)
 {
-	webkit_web_view_reload(b->UI.view);
+	if (arg->n == TRUE) {
+		webkit_web_view_reload_bypass_cache(b->UI.view);
+	} else {
+		webkit_web_view_reload(b->UI.view);
+	}
+}
+
+void sc_zoom(Browser *b, const Arg *arg)
+{
+	browser_zoom(b, arg->n);
 }
 
 gboolean cb_win_keypress(GtkWidget *widget, GdkEventKey *event, Browser *b)
@@ -483,6 +501,21 @@ void browser_load_uri(Browser * b, char *uri)
 	webkit_web_view_load_uri(b->UI.view, new_uri);
 
 	free(new_uri);
+}
+
+void browser_zoom(Browser *b, int mode)
+{
+	switch (mode) {
+	case ZOOM_IN:
+		webkit_web_view_zoom_in(b->UI.view);
+		break;
+	case ZOOM_OUT:
+		webkit_web_view_zoom_out(b->UI.view);
+		break;
+	default:
+		webkit_web_view_set_zoom_level(b->UI.view, 1.0);
+		break;
+	}
 }
 
 

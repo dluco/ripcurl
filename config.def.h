@@ -23,6 +23,10 @@ gboolean show_statusbar		=	TRUE;
 
 /* shortcuts */
 Shortcut shortcuts[] = {
-	{ GDK_CONTROL_MASK,	GDK_w,	sc_close_window,	{ 0,	NULL } },
-	{ GDK_CONTROL_MASK,	GDK_r,	sc_reload,			{ 0,	NULL } },
+	{ GDK_CONTROL_MASK,					GDK_w,		sc_close_window,	{ 0,			NULL } },
+	{ GDK_CONTROL_MASK,					GDK_r,		sc_reload,			{ 0,			NULL } },
+	{ GDK_CONTROL_MASK|GDK_SHIFT_MASK,	GDK_r,		sc_reload,			{ TRUE,			NULL } },
+	{ GDK_CONTROL_MASK|GDK_SHIFT_MASK,	GDK_plus,	sc_zoom,			{ ZOOM_IN,		NULL } },
+	{ GDK_CONTROL_MASK,					GDK_minus,	sc_zoom,			{ ZOOM_OUT,		NULL } },
+	{ GDK_CONTROL_MASK,					GDK_0,		sc_zoom,			{ ZOOM_RESET,	NULL } },
 };
