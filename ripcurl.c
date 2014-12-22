@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <string.h>
 #include <math.h>
 
@@ -78,6 +79,7 @@ Ripcurl *ripcurl;
 /* utility functions */
 void print_err(char *fmt, ...);
 void *emalloc(size_t size);
+int asprintf(char **str, char *fmt, ...);
 void chomp(char *str);
 
 /* shortcut functions */
@@ -146,6 +148,32 @@ void *emalloc(size_t size)
 		die("malloc of %zu bytes failed\n", size);
 	}
 	return p;
+}
+
+int asprintf(char **str, char *fmt, ...)
+{
+	va_list argp;
+	char one_char[1];
+	int len;
+
+	va_start(argp, fmt);
+	len = vsnprintf(one_char, 1, fmt, argp);
+	if (len < 1) {
+		*str = NULL;
+		return -1;
+	}
+	va_end(argp);
+
+	*str = emalloc(len+1);
+	if (!str) {
+		return -1;
+	}
+
+	va_start(argp, fmt);
+	vsnprintf(*str, len+1, fmt, argp);
+	va_end(argp);
+
+	return len;
 }
 
 void chomp(char *str)
@@ -450,8 +478,7 @@ void browser_update_uri(Browser *b)
 	char *text;
 
 	if (b->State.progress > 0 && b->State.progress < 100) {
-		/* FIXME: don't use g_strdup_printf  */
-		text = g_strdup_printf("Loading... %s (%d%%)", (uri) ? uri : "", b->State.progress);
+		asprintf(&text, "Loading... %s (%d%%)", (uri) ? uri : "", b->State.progress);
 	} else {
 		text = strdup((uri) ? uri : "[No name]");
 	}
@@ -476,8 +503,7 @@ void browser_update_position(Browser *b)
 	} else if (value == 0) {
 		position = strdup("Top");
 	} else {
-		/* FIXME */
-		position = g_strdup_printf("%2d%%", (int) ceil((value / max) * 100));
+		asprintf(&position, "%2d%%", (int) ceil((value / max) * 100));
 	}
 
 	gtk_label_set_text(b->Statusbar.position, position);
