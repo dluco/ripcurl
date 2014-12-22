@@ -32,11 +32,13 @@ struct _Shortcut {
 };
 
 struct _Ripcurl {
-	WebKitWebSettings *webkit_settings;
-	SoupSession *soup_session;
-	GList *browsers;
-	GList *bookmarks;
-	GList *history;
+	struct {
+		WebKitWebSettings *webkit_settings;
+		SoupSession *soup_session;
+		GList *browsers;
+		GList *bookmarks;
+		GList *history;
+	} Global;
 
 	struct {
 		char *config_dir;
@@ -227,7 +229,7 @@ WebKitWebView *cb_wv_create_web_view(WebKitWebView *v, WebKitWebFrame *f, Browse
 {
 	Browser *n = browser_new();
 	/* add to list of browsers */
-	ripcurl->browsers = g_list_prepend(ripcurl->browsers, n);
+	ripcurl->Global.browsers = g_list_prepend(ripcurl->Global.browsers, n);
 
 	return n->UI.view;
 }
@@ -436,7 +438,7 @@ void browser_apply_settings(Browser *b)
 	}
 
 	/* apply browser settings */
-	webkit_web_view_set_settings(b->UI.view, ripcurl->webkit_settings);
+	webkit_web_view_set_settings(b->UI.view, ripcurl->Global.webkit_settings);
 
 	/* statusbar */
 	gtk_misc_set_alignment(GTK_MISC(b->Statusbar.text), 0.0, 0.0);
@@ -543,12 +545,12 @@ void browser_destroy(Browser * b)
 	gtk_widget_destroy(b->UI.window);
 
 	/* remove from list of browsers */
-	ripcurl->browsers = g_list_remove(ripcurl->browsers, b);
+	ripcurl->Global.browsers = g_list_remove(ripcurl->Global.browsers, b);
 	/* free data */
 	free(b);
 
 	/* quit if no windows left */
-	if (g_list_length(ripcurl->browsers) == 0) {
+	if (g_list_length(ripcurl->Global.browsers) == 0) {
 		gtk_main_quit();
 	}
 }
@@ -571,7 +573,7 @@ void bookmarks_read(void)
 		if (strlen(line) == 0) {
 			continue;
 		}
-		ripcurl->bookmarks = g_list_append(ripcurl->bookmarks, strdup(line));
+		ripcurl->Global.bookmarks = g_list_append(ripcurl->Global.bookmarks, strdup(line));
 	}
 
 	if (line) {
@@ -593,7 +595,7 @@ void bookmarks_write(void)
 		return;
 	}
 
-	for (list = ripcurl->bookmarks; list; list = g_list_next(list)) {
+	for (list = ripcurl->Global.bookmarks; list; list = g_list_next(list)) {
 		fprintf(fp, "%s\n", (char *)list->data);
 	}
 
@@ -611,14 +613,14 @@ void history_add(char *uri)
 	}
 
 	/* check if uri is already in history */
-	link = g_list_find_custom(ripcurl->history, uri, (GCompareFunc)strcmp);
+	link = g_list_find_custom(ripcurl->Global.history, uri, (GCompareFunc)strcmp);
 	if (link) {
 		/* uri is already present - move to front of list */
-		ripcurl->history = g_list_remove_link(ripcurl->history, link);
-		ripcurl->history = g_list_concat(link, ripcurl->history);
+		ripcurl->Global.history = g_list_remove_link(ripcurl->Global.history, link);
+		ripcurl->Global.history = g_list_concat(link, ripcurl->Global.history);
 	} else {
 		/* uri not present - prepend to list */
-		ripcurl->history = g_list_prepend(ripcurl->history, strdup(uri));
+		ripcurl->Global.history = g_list_prepend(ripcurl->Global.history, strdup(uri));
 	}
 }
 
@@ -640,7 +642,7 @@ void history_read(void)
 		if (strlen(line) == 0) {
 			continue;
 		}
-		ripcurl->history = g_list_prepend(ripcurl->history, strdup(line));
+		ripcurl->Global.history = g_list_prepend(ripcurl->Global.history, strdup(line));
 	}
 
 	if (line) {
@@ -663,7 +665,7 @@ void history_write(void)
 		return;
 	}
 
-	for (list = g_list_last(ripcurl->history), i = 0; list; list = g_list_previous(list), i++) {
+	for (list = g_list_last(ripcurl->Global.history), i = 0; list; list = g_list_previous(list), i++) {
 		if (history_limit && i >= history_limit) {
 			/* history limit reached - stop */
 			break;
@@ -679,19 +681,19 @@ void history_write(void)
 void ripcurl_init(void)
 {
 	/* webkit settings */
-	ripcurl->webkit_settings = webkit_web_settings_new();
+	ripcurl->Global.webkit_settings = webkit_web_settings_new();
 
 	/* libsoup session */
-	ripcurl->soup_session = webkit_get_default_session();
+	ripcurl->Global.soup_session = webkit_get_default_session();
 
 	/* browser list */
-	ripcurl->browsers = NULL;
+	ripcurl->Global.browsers = NULL;
 
 	/* bookmarks list */
-	ripcurl->bookmarks = NULL;
+	ripcurl->Global.bookmarks = NULL;
 
 	/* history list */
-	ripcurl->history = NULL;
+	ripcurl->Global.history = NULL;
 
 	/* create config dir */
 	ripcurl->Files.config_dir = g_build_filename(g_get_user_config_dir(), "ripcurl", NULL);
@@ -708,7 +710,7 @@ void load_data(void)
 		print_err("error building cookie file path\n");
 	} else {
 		cookie_jar = soup_cookie_jar_text_new(ripcurl->Files.cookie_file, FALSE);
-		soup_session_add_feature(ripcurl->soup_session, SOUP_SESSION_FEATURE(cookie_jar));
+		soup_session_add_feature(ripcurl->Global.soup_session, SOUP_SESSION_FEATURE(cookie_jar));
 	}
 
 	/* load bookmarks */
@@ -731,7 +733,7 @@ void load_data(void)
 void ripcurl_settings(void)
 {
 	if (user_agent) {
-		g_object_set(G_OBJECT(ripcurl->webkit_settings), "user-agent", user_agent, NULL);
+		g_object_set(G_OBJECT(ripcurl->Global.webkit_settings), "user-agent", user_agent, NULL);
 	}
 }
 
@@ -752,10 +754,10 @@ void cleanup(void)
 	GList *list;
 
 	/* destroy any remaining browsers */
-	while (ripcurl->browsers) {
-		browser_destroy(ripcurl->browsers->data);
+	while (ripcurl->Global.browsers) {
+		browser_destroy(ripcurl->Global.browsers->data);
 	}
-	g_list_free(ripcurl->browsers);
+	g_list_free(ripcurl->Global.browsers);
 
 	/* free cookie file */
 	g_free(ripcurl->Files.cookie_file);
@@ -766,10 +768,10 @@ void cleanup(void)
 	}
 
 	/* clear bookmarks */
-	for (list = ripcurl->bookmarks; list; list = g_list_next(list)) {
+	for (list = ripcurl->Global.bookmarks; list; list = g_list_next(list)) {
 		free(list->data);
 	}
-	g_list_free(ripcurl->bookmarks);
+	g_list_free(ripcurl->Global.bookmarks);
 	g_free(ripcurl->Files.bookmarks_file);
 
 	/* write history */
@@ -778,10 +780,10 @@ void cleanup(void)
 	}
 
 	/* clear history */
-	for (list = ripcurl->history; list; list = g_list_next(list)) {
+	for (list = ripcurl->Global.history; list; list = g_list_next(list)) {
 		free(list->data);
 	}
-	g_list_free(ripcurl->history);
+	g_list_free(ripcurl->Global.history);
 	g_free(ripcurl->Files.history_file);
 
 	/* free config dir file */
@@ -810,7 +812,7 @@ int main(int argc, char *argv[])
 	/* init first browser window */
 	b = browser_new();
 	/* add to list of browsers */
-	ripcurl->browsers = g_list_prepend(ripcurl->browsers, b);
+	ripcurl->Global.browsers = g_list_prepend(ripcurl->Global.browsers, b);
 
 	if (argc > 1) {
 		browser_load_uri(b, argv[1]);
