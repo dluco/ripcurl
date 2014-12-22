@@ -48,6 +48,8 @@ struct _Ripcurl {
 	struct {
 		GdkColor inputbar_bg;
 		GdkColor inputbar_fg;
+		GdkColor statusbar_bg;
+		GdkColor statusbar_fg;
 		PangoFontDescription *font;
 	} Style;
 };
@@ -445,6 +447,15 @@ void browser_apply_settings(Browser *b)
 	gtk_misc_set_padding(GTK_MISC(b->Statusbar.buffer), 1.0, 2.0);
 	gtk_misc_set_padding(GTK_MISC(b->Statusbar.position), 1.0, 2.0);
 
+	gtk_widget_modify_bg(GTK_WIDGET(b->UI.statusbar), GTK_STATE_NORMAL, &(ripcurl->Style.statusbar_bg));
+	gtk_widget_modify_fg(GTK_WIDGET(b->Statusbar.text), GTK_STATE_NORMAL, &(ripcurl->Style.statusbar_fg));
+	gtk_widget_modify_fg(GTK_WIDGET(b->Statusbar.buffer), GTK_STATE_NORMAL, &(ripcurl->Style.statusbar_fg));
+	gtk_widget_modify_fg(GTK_WIDGET(b->Statusbar.position), GTK_STATE_NORMAL, &(ripcurl->Style.statusbar_fg));
+
+	gtk_widget_modify_font(GTK_WIDGET(b->Statusbar.text), ripcurl->Style.font);
+	gtk_widget_modify_font(GTK_WIDGET(b->Statusbar.buffer), ripcurl->Style.font);
+	gtk_widget_modify_font(GTK_WIDGET(b->Statusbar.position), ripcurl->Style.font);
+
 	/* inputbar settings */
 	gtk_entry_set_inner_border(b->UI.inputbar, NULL);
 	gtk_entry_set_has_frame(b->UI.inputbar, FALSE);
@@ -729,6 +740,8 @@ void ripcurl_style(void)
 	/* parse colors */
 	gdk_color_parse(inputbar_bg_color, &(ripcurl->Style.inputbar_bg));
 	gdk_color_parse(inputbar_fg_color, &(ripcurl->Style.inputbar_fg));
+	gdk_color_parse(statusbar_bg_color, &(ripcurl->Style.statusbar_bg));
+	gdk_color_parse(statusbar_fg_color, &(ripcurl->Style.statusbar_fg));
 
 	/* font */
 	ripcurl->Style.font = pango_font_description_from_string(font);

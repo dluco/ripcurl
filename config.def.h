@@ -12,9 +12,11 @@ int history_limit	=	0;
 char *download_dir	=	"~/Downloads";
 
 /* appearance */
-char *font				=	"monospace normal 9";
-char *inputbar_bg_color	=	"#000000";
-char *inputbar_fg_color	=	"#FFFFFF";
+char *font					=	"monospace normal 9";
+char *inputbar_bg_color		=	"#FFFFFF";
+char *inputbar_fg_color		=	"#000000";
+char *statusbar_bg_color	=	"#000000";
+char *statusbar_fg_color	=	"#FFFFFF";
 
 gboolean show_scrollbars	=	FALSE;
 gboolean show_statusbar		=	TRUE;
