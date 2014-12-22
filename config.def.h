@@ -23,10 +23,18 @@ gboolean show_statusbar		=	TRUE;
 
 /* shortcuts */
 Shortcut shortcuts[] = {
+	{ 0,								GDK_Escape,	sc_abort,			{ 0,			NULL } },
 	{ GDK_CONTROL_MASK,					GDK_w,		sc_close_window,	{ 0,			NULL } },
+	{ 0,								GDK_colon,	sc_focus_inputbar,	{ 0,			NULL } },
 	{ GDK_CONTROL_MASK,					GDK_r,		sc_reload,			{ 0,			NULL } },
 	{ GDK_CONTROL_MASK|GDK_SHIFT_MASK,	GDK_r,		sc_reload,			{ TRUE,			NULL } },
-	{ GDK_CONTROL_MASK|GDK_SHIFT_MASK,	GDK_plus,	sc_zoom,			{ ZOOM_IN,		NULL } },
+	{ GDK_CONTROL_MASK,					GDK_plus,	sc_zoom,			{ ZOOM_IN,		NULL } },
 	{ GDK_CONTROL_MASK,					GDK_minus,	sc_zoom,			{ ZOOM_OUT,		NULL } },
 	{ GDK_CONTROL_MASK,					GDK_0,		sc_zoom,			{ ZOOM_RESET,	NULL } },
+};
+
+Shortcut inputbar_shortcuts[] = {
+	{ 0,								GDK_Escape,	isc_abort,			{ 0,			NULL } },
+	{ 0,								GDK_Up,		isc_command_history,{ PREVIOUS,		NULL } },
+	{ 0,								GDK_Down,	isc_command_history,{ NEXT,			NULL } },
 };

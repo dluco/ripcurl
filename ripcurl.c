@@ -17,6 +17,9 @@
 
 /* enums */
 enum {
+	DEFAULT,
+	NEXT,
+	PREVIOUS,
 	ZOOM_IN,
 	ZOOM_OUT,
 	ZOOM_RESET,
@@ -46,6 +49,7 @@ struct _Ripcurl {
 		GList *browsers;
 		GList *bookmarks;
 		GList *history;
+		GList *command_history;
 	} Global;
 
 	struct {
@@ -95,9 +99,15 @@ int asprintf(char **str, char *fmt, ...);
 void chomp(char *str);
 
 /* shortcut functions */
+void sc_abort(Browser *b, const Arg *arg);
+void sc_focus_inputbar(Browser *b, const Arg *arg);
 void sc_close_window(Browser *b, const Arg *arg);
 void sc_reload(Browser *b, const Arg *arg);
 void sc_zoom(Browser *b, const Arg *arg);
+
+/* inputbar shortcut functions */
+void isc_abort(Browser *b, const Arg *arg);
+void isc_command_history(Browser *b, const Arg *arg);
 
 /* callbacks */
 gboolean cb_win_keypress(GtkWidget *widget, GdkEventKey *event, Browser *b);
@@ -112,12 +122,14 @@ gboolean cb_wv_download_requested(WebKitWebView *view, WebKitDownload *download,
 void cb_download_notify_status(WebKitDownload *download, GParamSpec *pspec, Browser *b);
 void cb_wv_scrolled(GtkAdjustment *adjustment, Browser *b);
 
+gboolean cb_inputbar_keypress(GtkWidget *widget, GdkEventKey *event, Browser *b);
 void cb_inputbar_activate(GtkEntry *entry, Browser *b);
 
 /* browser functions */
 Browser *browser_new(void);
 void browser_show(Browser * b);
 void browser_apply_settings(Browser *b);
+void notify(Browser *b, int level, char *message);
 void browser_load_uri(Browser * b, char *uri);
 void browser_zoom(Browser * b, int mode);
 void browser_update_uri(Browser *b);
@@ -203,6 +215,24 @@ void chomp(char *str)
 	}
 }
 
+void sc_abort(Browser *b, const Arg *arg)
+{
+	/* stop loading website */
+	webkit_web_view_stop_loading(b->UI.view);
+
+	/* hide inputbar */
+	gtk_widget_hide(GTK_WIDGET(b->UI.inputbar));
+
+	gtk_widget_grab_focus(GTK_WIDGET(b->UI.view));
+}
+
+void sc_focus_inputbar(Browser *b, const Arg *arg)
+{
+	if (!gtk_widget_get_visible(GTK_WIDGET(b->UI.inputbar))) {
+		gtk_widget_show(GTK_WIDGET(b->UI.inputbar));
+	}
+}
+
 void sc_close_window(Browser *b, const Arg *arg)
 {
 	browser_destroy(b);
@@ -220,6 +250,33 @@ void sc_reload(Browser *b, const Arg *arg)
 void sc_zoom(Browser *b, const Arg *arg)
 {
 	browser_zoom(b, arg->n);
+}
+
+void isc_abort(Browser *b, const Arg *arg)
+{
+	gtk_widget_grab_focus(GTK_WIDGET(b->UI.view));
+	gtk_widget_hide(GTK_WIDGET(b->UI.inputbar));
+}
+
+void isc_command_history(Browser *b, const Arg *arg)
+{
+	int len = g_list_length(ripcurl->Global.command_history);
+	int n;
+	char *command;
+
+	if (len > 0) {
+		if (arg->n == NEXT) {
+			n = (len + 1) % len;
+		} else {
+			n = (len - 1) % len;
+		}
+
+		printf("n=%d\n", n);
+
+		command = g_list_nth_data(ripcurl->Global.command_history, n);
+		notify(b, DEFAULT, command);
+		gtk_editable_set_position(GTK_EDITABLE(b->UI.inputbar), -1);
+	}
 }
 
 gboolean cb_win_keypress(GtkWidget *widget, GdkEventKey *event, Browser *b)
@@ -361,6 +418,23 @@ void cb_wv_scrolled(GtkAdjustment *adjustment, Browser *b)
 	browser_update_position(b);
 }
 
+gboolean cb_inputbar_keypress(GtkWidget *widget, GdkEventKey *event, Browser *b)
+{
+	int i;
+	gboolean processed = FALSE;
+
+	for (i = 0; i < LENGTH(inputbar_shortcuts); i++) {
+		if (gdk_keyval_to_lower(event->keyval) == inputbar_shortcuts[i].keyval
+				&& CLEANMASK(event->state) == inputbar_shortcuts[i].mask
+				&& inputbar_shortcuts[i].func) {
+			inputbar_shortcuts[i].func(b, &(inputbar_shortcuts[i].arg));
+			processed = TRUE;
+		}
+	}
+
+	return processed;
+}
+
 void cb_inputbar_activate(GtkEntry *entry, Browser *b)
 {
 	char *input = strdup(gtk_entry_get_text(entry));
@@ -420,6 +494,7 @@ Browser *browser_new(void)
 	gtk_container_add(GTK_CONTAINER(b->UI.statusbar), GTK_WIDGET(b->UI.statusbar_entries));
 
 	/* inputbar */
+	g_signal_connect(G_OBJECT(b->UI.inputbar), "key-press-event", G_CALLBACK(cb_inputbar_keypress), b);
 	g_signal_connect(G_OBJECT(b->UI.inputbar), "activate", G_CALLBACK(cb_inputbar_activate), b);
 	
 	/* packing */
@@ -486,6 +561,17 @@ void browser_apply_settings(Browser *b)
 	gtk_widget_modify_text(GTK_WIDGET(b->UI.inputbar), GTK_STATE_NORMAL, &(ripcurl->Style.inputbar_fg));
 	gtk_widget_modify_font(GTK_WIDGET(b->UI.inputbar), ripcurl->Style.font);
 
+}
+
+void notify(Browser *b, int level, char *message)
+{
+	if (!gtk_widget_get_visible(GTK_WIDGET(b->UI.inputbar))) {
+		gtk_widget_show(GTK_WIDGET(b->UI.inputbar));
+	}
+
+	if (message) {
+		gtk_entry_set_text(b->UI.inputbar, message);
+	}
 }
 
 void browser_load_uri(Browser * b, char *uri)
@@ -728,6 +814,9 @@ void ripcurl_init(void)
 
 	/* history list */
 	ripcurl->Global.history = NULL;
+
+	/* command history list */
+	ripcurl->Global.command_history = NULL;
 
 	/* create config dir */
 	ripcurl->Files.config_dir = g_build_filename(g_get_user_config_dir(), "ripcurl", NULL);
