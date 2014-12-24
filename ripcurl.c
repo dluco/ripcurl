@@ -61,7 +61,7 @@ struct _InputbarShortcut {
 };
 
 struct _Command {
-	char *command;
+	char *name;
 	char *abbrv;
 	gboolean (*func)(Browser *b, int argc, char **argv);
 };
@@ -130,7 +130,10 @@ void isc_abort(Browser *b, const Arg *arg);
 void isc_command_history(Browser *b, const Arg *arg);
 
 /* commands */
+gboolean cmd_back(Browser *b, int argc, char **argv);
+gboolean cmd_forward(Browser *b, int argc, char **argv);
 gboolean cmd_quit(Browser *b, int argc, char **argv);
+gboolean cmd_quitall(Browser *b, int argc, char **argv);
 
 /* callbacks */
 void cb_win_destroy(GtkWidget *widget, Browser *b);
@@ -153,6 +156,7 @@ Browser *browser_new(void);
 void browser_show(Browser * b);
 void browser_apply_settings(Browser *b);
 void browser_change_mode(Browser *b, int mode);
+void browser_nav_history(Browser *b, int direction);
 void browser_notify(Browser *b, int level, char *message);
 void browser_load_uri(Browser * b, char *uri);
 void browser_zoom(Browser * b, int mode);
@@ -251,28 +255,51 @@ void isc_abort(Browser *b, const Arg *arg)
 
 void isc_command_history(Browser *b, const Arg *arg)
 {
+	static int current = 0;
 	int len = g_list_length(ripcurl->Global.command_history);
-	int n;
 	char *command;
 
 	if (len > 0) {
 		if (arg->n == NEXT) {
-			n = (len + 1) % len;
+			current = (len + current + 1) % len;
 		} else {
-			n = (len - 1) % len;
+			current = (len + current - 1) % len;
 		}
 
-		printf("n=%d\n", n);
+		printf("current=%d\n", current);
 
-		command = g_list_nth_data(ripcurl->Global.command_history, n);
+		command = g_list_nth_data(ripcurl->Global.command_history, current);
 		browser_notify(b, DEFAULT, command);
 		gtk_editable_set_position(GTK_EDITABLE(b->UI.inputbar), -1);
 	}
 }
 
+gboolean cmd_back(Browser *b, int argc, char **argv)
+{
+	browser_nav_history(b, PREVIOUS);
+
+	return TRUE;
+}
+
+gboolean cmd_forward(Browser *b, int argc, char **argv)
+{
+	browser_nav_history(b, NEXT);
+
+	return TRUE;
+}
+
 gboolean cmd_quit(Browser *b, int argc, char **argv)
 {
 	browser_destroy(b);
+
+	return FALSE;
+}
+
+gboolean cmd_quitall(Browser *b, int argc, char **argv)
+{
+	while (ripcurl->Global.browsers) {
+		browser_destroy(ripcurl->Global.browsers->data);
+	}
 
 	return FALSE;
 }
@@ -478,15 +505,18 @@ void cb_inputbar_activate(GtkEntry *entry, Browser *b)
 
 	/* search commands */
 	for (i = 0; i < LENGTH(commands); i++) {
-		if ((strcmp(command, commands[i].command) == 0)
-				|| (strcmp(command, commands[i].abbrv) == 0)) {
+		if ((strcmp_s(command, commands[i].name) == 0)
+				|| (strcmp_s(command, commands[i].abbrv) == 0)) {
 			ret = commands[i].func(b, n - 1, tokens + 1);
 			processed = TRUE;
+			break;
 		}
 	}
 
 	if (!processed) {
 		browser_notify(b, ERROR, "Unknown command");
+	} else {
+		gtk_widget_hide(GTK_WIDGET(b->UI.inputbar));
 	}
 
 	/* ret == FALSE : program is exiting */
@@ -627,6 +657,20 @@ void browser_change_mode(Browser *b, int mode)
 
 	ripcurl->Global.mode = mode;
 	browser_notify(b, DEFAULT, text);
+}
+
+void browser_nav_history(Browser *b, int direction)
+{
+	switch (direction) {
+	case PREVIOUS:
+		webkit_web_view_go_back(b->UI.view);
+		break;
+	case NEXT:
+		webkit_web_view_go_forward(b->UI.view);
+		break;
+	default:
+		break;
+	}
 }
 
 void browser_notify(Browser *b, int level, char *message)
@@ -799,7 +843,7 @@ void history_add(char *uri)
 	}
 
 	/* check if uri is already in history */
-	link = g_list_find_custom(ripcurl->Global.history, uri, (GCompareFunc)strcmp);
+	link = g_list_find_custom(ripcurl->Global.history, uri, (GCompareFunc)strcmp_s);
 	if (link) {
 		/* uri is already present - move to front of list */
 		ripcurl->Global.history = g_list_remove_link(ripcurl->Global.history, link);

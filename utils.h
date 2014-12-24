@@ -6,6 +6,7 @@ void print_err(char *fmt, ...);
 void *emalloc(size_t size);
 int asprintf(char **str, char *fmt, ...);
 void chomp(char *str);
+int strcmp_s(const char *s1, const char *s2);
 unsigned int strv_length(char **strv);
 void strv_free(char **strv);
 

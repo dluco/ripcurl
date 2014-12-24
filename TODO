@@ -2,3 +2,4 @@
 	- navigation (go back/forward)
 - bookmarks
 	- creating bookmarks?
+- zeros for abbrv cause segfault

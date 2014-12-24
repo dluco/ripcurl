@@ -234,6 +234,15 @@ void chomp(char *str)
 	}
 }
 
+int strcmp_s(const char *s1, const char *s2)
+{
+	if (!s1)
+		return -(s1 != s2);
+	if (!s2)
+		return (s1 != s2);
+	return strcmp(s1, s2);
+}
+
 unsigned int strv_length(char **strv)
 {
 	unsigned int n;

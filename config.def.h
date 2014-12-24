@@ -39,3 +39,11 @@ InputbarShortcut inputbar_shortcuts[] = {
 	{ 0,								GDK_Up,		isc_command_history,		{ PREVIOUS,		NULL } },
 	{ 0,								GDK_Down,	isc_command_history,		{ NEXT,			NULL } },
 };
+
+/* commands */
+Command commands[] = {
+	{ "back",		0,		cmd_back },
+	{ "forward",	0,		cmd_forward },
+	{ "quit",		"q",	cmd_quit },
+	{ "quitall",	0,		cmd_quitall },
+};
