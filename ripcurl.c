@@ -122,8 +122,11 @@ Ripcurl *ripcurl;
 void sc_abort(Browser *b, const Arg *arg);
 void sc_focus_inputbar(Browser *b, const Arg *arg);
 void sc_close_window(Browser *b, const Arg *arg);
+void sc_nav_history(Browser *b, const Arg *arg);
+void sc_new_window(Browser *b, const Arg *arg);
 void sc_reload(Browser *b, const Arg *arg);
 void sc_toggle_statusbar(Browser *b, const Arg *arg);
+void sc_toggle_source(Browser *b, const Arg *arg);
 void sc_zoom(Browser *b, const Arg *arg);
 
 /* inputbar shortcut functions */
@@ -136,6 +139,7 @@ gboolean cmd_forward(Browser *b, int argc, char **argv);
 gboolean cmd_open(Browser *b, int argc, char **argv);
 gboolean cmd_quit(Browser *b, int argc, char **argv);
 gboolean cmd_quitall(Browser *b, int argc, char **argv);
+gboolean cmd_winopen(Browser *b, int argc, char **argv);
 
 /* callbacks */
 void cb_win_destroy(GtkWidget *widget, Browser *b);
@@ -161,6 +165,7 @@ void browser_change_mode(Browser *b, int mode);
 void browser_nav_history(Browser *b, int direction);
 void browser_notify(Browser *b, int level, char *message);
 void browser_load_uri(Browser * b, char *uri);
+void browser_reload(Browser * b, int bypass);
 void browser_zoom(Browser * b, int mode);
 void browser_update_uri(Browser *b);
 void browser_update_position(Browser *b);
@@ -237,17 +242,31 @@ void sc_close_window(Browser *b, const Arg *arg)
 
 void sc_reload(Browser *b, const Arg *arg)
 {
-	if (arg->n == TRUE) {
-		webkit_web_view_reload_bypass_cache(b->UI.view);
-	} else {
-		webkit_web_view_reload(b->UI.view);
-	}
+	browser_reload(b, arg->n);
+}
+
+void sc_nav_history(Browser *b, const Arg *arg)
+{
+	browser_nav_history(b, arg->n);
+}
+
+void sc_new_window(Browser *b, const Arg *arg)
+{
+	cmd_winopen(b, 0, NULL);
 }
 
 void sc_toggle_statusbar(Browser *b, const Arg *arg)
 {
 	gtk_widget_set_visible(GTK_WIDGET(b->UI.statusbar),
 			!gtk_widget_get_visible(GTK_WIDGET(b->UI.statusbar)));
+}
+
+void sc_toggle_source(Browser *b, const Arg *arg)
+{
+	webkit_web_view_set_view_source_mode(b->UI.view,
+			!webkit_web_view_get_view_source_mode(b->UI.view));
+
+	browser_reload(b, FALSE);
 }
 
 void sc_zoom(Browser *b, const Arg *arg)
@@ -327,6 +346,19 @@ gboolean cmd_quitall(Browser *b, int argc, char **argv)
 	return TRUE;
 }
 
+gboolean cmd_winopen(Browser *b, int argc, char **argv)
+{
+	Browser *n = browser_new();
+	char *uri;
+
+	uri = strjoinv(argv, " ");
+	browser_load_uri(n, uri);
+
+	free(uri);
+
+	return TRUE;
+}
+
 void cb_win_destroy(GtkWidget * widget, Browser * b)
 {
 	browser_destroy(b);
@@ -359,8 +391,6 @@ gboolean cb_wv_keypress(GtkWidget *widget, GdkEventKey *event, Browser *b)
 WebKitWebView *cb_wv_create_web_view(WebKitWebView *v, WebKitWebFrame *f, Browser *b)
 {
 	Browser *n = browser_new();
-	/* add to list of browsers */
-	ripcurl->Global.browsers = g_list_prepend(ripcurl->Global.browsers, n);
 
 	return n->UI.view;
 }
@@ -617,6 +647,9 @@ Browser *browser_new(void)
 	browser_apply_settings(b);
 	browser_show(b);
 
+	/* add to list of browsers */
+	ripcurl->Global.browsers = g_list_prepend(ripcurl->Global.browsers, b);
+
 	return b;
 }
 
@@ -727,6 +760,15 @@ void browser_load_uri(Browser * b, char *uri)
 	webkit_web_view_load_uri(b->UI.view, new_uri);
 
 	free(new_uri);
+}
+
+void browser_reload(Browser *b, int bypass)
+{
+	if (bypass == TRUE) {
+		webkit_web_view_reload_bypass_cache(b->UI.view);
+	} else {
+		webkit_web_view_reload(b->UI.view);
+	}
 }
 
 void browser_zoom(Browser *b, int mode)
@@ -1080,8 +1122,6 @@ int main(int argc, char *argv[])
 
 	/* init first browser window */
 	b = browser_new();
-	/* add to list of browsers */
-	ripcurl->Global.browsers = g_list_prepend(ripcurl->Global.browsers, b);
 
 	if (argc > 1) {
 		browser_load_uri(b, argv[1]);
