@@ -140,6 +140,7 @@ gboolean cmd_forward(Browser *b, int argc, char **argv);
 gboolean cmd_open(Browser *b, int argc, char **argv);
 gboolean cmd_print(Browser *b, int argc, char **argv);
 gboolean cmd_quit(Browser *b, int argc, char **argv);
+gboolean cmd_reload(Browser *b, int argc, char **argv);
 gboolean cmd_quitall(Browser *b, int argc, char **argv);
 gboolean cmd_winopen(Browser *b, int argc, char **argv);
 
@@ -362,6 +363,13 @@ gboolean cmd_quitall(Browser *b, int argc, char **argv)
 	while (ripcurl->Global.browsers) {
 		browser_destroy(ripcurl->Global.browsers->data);
 	}
+
+	return TRUE;
+}
+
+gboolean cmd_reload(Browser *b, int argc, char **argv)
+{
+	browser_reload(b, FALSE);
 
 	return TRUE;
 }

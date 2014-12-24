@@ -55,6 +55,7 @@ Command commands[] = {
 	{ "open",		"o",	cmd_open },
 	{ "print",		0,		cmd_print },
 	{ "quit",		"q",	cmd_quit },
+	{ "reload",		"r",	cmd_reload },
 	{ "quitall",	0,		cmd_quitall },
 	{ "winopen",	"W",	cmd_winopen },
 };
