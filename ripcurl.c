@@ -124,6 +124,7 @@ void sc_focus_inputbar(Browser *b, const Arg *arg);
 void sc_close_window(Browser *b, const Arg *arg);
 void sc_nav_history(Browser *b, const Arg *arg);
 void sc_new_window(Browser *b, const Arg *arg);
+void sc_print(Browser *b, const Arg *arg);
 void sc_reload(Browser *b, const Arg *arg);
 void sc_toggle_statusbar(Browser *b, const Arg *arg);
 void sc_toggle_source(Browser *b, const Arg *arg);
@@ -137,6 +138,7 @@ void isc_command_history(Browser *b, const Arg *arg);
 gboolean cmd_back(Browser *b, int argc, char **argv);
 gboolean cmd_forward(Browser *b, int argc, char **argv);
 gboolean cmd_open(Browser *b, int argc, char **argv);
+gboolean cmd_print(Browser *b, int argc, char **argv);
 gboolean cmd_quit(Browser *b, int argc, char **argv);
 gboolean cmd_quitall(Browser *b, int argc, char **argv);
 gboolean cmd_winopen(Browser *b, int argc, char **argv);
@@ -255,6 +257,17 @@ void sc_new_window(Browser *b, const Arg *arg)
 	cmd_winopen(b, 0, NULL);
 }
 
+void sc_print(Browser *b, const Arg *arg)
+{
+	WebKitWebFrame *frame = webkit_web_view_get_main_frame(b->UI.view);
+
+	if (!frame) {
+		return;
+	}
+
+	webkit_web_frame_print(frame);
+}
+
 void sc_toggle_statusbar(Browser *b, const Arg *arg)
 {
 	gtk_widget_set_visible(GTK_WIDGET(b->UI.statusbar),
@@ -325,6 +338,13 @@ gboolean cmd_open(Browser *b, int argc, char **argv)
 	browser_load_uri(b, uri);
 
 	free(uri);
+
+	return TRUE;
+}
+
+gboolean cmd_print(Browser *b, int argc, char **argv)
+{
+	sc_print(b, NULL);
 
 	return TRUE;
 }
