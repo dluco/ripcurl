@@ -3,7 +3,7 @@
 include config.mk
 
 PROJECT  = ripcurl
-SOURCE   = ripcurl.c
+SOURCE   = ripcurl.c utils.c
 OBJECTS  = ${SOURCE:.c=.o}
 DOBJECTS = ${SOURCE:.c=.do}
 

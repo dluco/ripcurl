@@ -20,6 +20,7 @@ char *statusbar_fg_color	=	"#FFFFFF";
 
 gboolean show_scrollbars	=	FALSE;
 gboolean show_statusbar		=	TRUE;
+gboolean private_browsing	=	FALSE;
 
 /* shortcuts */
 Shortcut shortcuts[] = {

@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdarg.h>
 #include <string.h>
 #include <math.h>
 
@@ -8,9 +7,10 @@
 #include <gdk/gdkkeysyms.h>
 #include <webkit/webkit.h>
 
+#include "utils.h"
+
 /* macros */
 #define LENGTH(x)		(sizeof x / sizeof x[0])
-#define die(fmt, ...)	{ print_err(fmt, ##__VA_ARGS__); exit(EXIT_FAILURE); }
 #define ALL_MASK		(GDK_CONTROL_MASK | GDK_SHIFT_MASK | GDK_MOD1_MASK)
 
 #define MAXLINE 1024
@@ -18,6 +18,7 @@
 /* enums */
 enum {
 	DEFAULT,
+	ERROR,
 	NEXT,
 	PREVIOUS,
 	ZOOM_IN,
@@ -35,6 +36,7 @@ enum mode {
 typedef struct _Arg Arg;
 typedef struct _Shortcut Shortcut;
 typedef struct _InputbarShortcut InputbarShortcut;
+typedef struct _Command Command;
 typedef struct _Ripcurl Ripcurl;
 typedef struct _Browser Browser;
 
@@ -56,6 +58,12 @@ struct _InputbarShortcut {
 	int keyval;
 	void (*func)(Browser *b, const Arg *arg);
 	const Arg arg;
+};
+
+struct _Command {
+	char *command;
+	char *abbrv;
+	gboolean (*func)(Browser *b, int argc, char **argv);
 };
 
 struct _Ripcurl {
@@ -110,12 +118,6 @@ struct _Browser {
 
 Ripcurl *ripcurl;
 
-/* utility functions */
-void print_err(char *fmt, ...);
-void *emalloc(size_t size);
-int asprintf(char **str, char *fmt, ...);
-void chomp(char *str);
-
 /* shortcut functions */
 void sc_abort(Browser *b, const Arg *arg);
 void sc_focus_inputbar(Browser *b, const Arg *arg);
@@ -126,6 +128,9 @@ void sc_zoom(Browser *b, const Arg *arg);
 /* inputbar shortcut functions */
 void isc_abort(Browser *b, const Arg *arg);
 void isc_command_history(Browser *b, const Arg *arg);
+
+/* commands */
+gboolean cmd_quit(Browser *b, int argc, char **argv);
 
 /* callbacks */
 void cb_win_destroy(GtkWidget *widget, Browser *b);
@@ -174,65 +179,6 @@ void cleanup(void);
 
 /* configuration */
 #include "config.h"
-
-void print_err(char *fmt, ...)
-{
-	va_list ap;
-
-	va_start(ap, fmt);
-	vfprintf(stderr, fmt, ap);
-	va_end(ap);
-}
-
-void *emalloc(size_t size)
-{
-	void *p;
-
-	p = malloc(size);
-	if (!p) {
-		die("malloc of %zu bytes failed\n", size);
-	}
-	return p;
-}
-
-int asprintf(char **str, char *fmt, ...)
-{
-	va_list argp;
-	char one_char[1];
-	int len;
-
-	va_start(argp, fmt);
-	len = vsnprintf(one_char, 1, fmt, argp);
-	if (len < 1) {
-		*str = NULL;
-		return -1;
-	}
-	va_end(argp);
-
-	*str = emalloc(len+1);
-	if (!str) {
-		return -1;
-	}
-
-	va_start(argp, fmt);
-	vsnprintf(*str, len+1, fmt, argp);
-	va_end(argp);
-
-	return len;
-}
-
-void chomp(char *str)
-{
-	char *p;
-
-	if (!str) {
-		return;
-	}
-
-	for (p = &str[strlen(str)-1]; (*p == '\n' || *p == '\r'); p--) {
-		*p = '\0';
-	}
-}
 
 void sc_abort(Browser *b, const Arg *arg)
 {
@@ -322,6 +268,13 @@ void isc_command_history(Browser *b, const Arg *arg)
 		browser_notify(b, DEFAULT, command);
 		gtk_editable_set_position(GTK_EDITABLE(b->UI.inputbar), -1);
 	}
+}
+
+gboolean cmd_quit(Browser *b, int argc, char **argv)
+{
+	browser_destroy(b);
+
+	return FALSE;
 }
 
 void cb_win_destroy(GtkWidget * widget, Browser * b)
@@ -495,13 +448,53 @@ gboolean cb_inputbar_keypress(GtkWidget *widget, GdkEventKey *event, Browser *b)
 
 void cb_inputbar_activate(GtkEntry *entry, Browser *b)
 {
-	char *input = strdup(gtk_entry_get_text(entry));
+	char *input;
+	char **tokens;
+	char *command;
+	int n, i;
+	gboolean ret = FALSE;
+	gboolean processed = FALSE;
 
-	/* FIXME: search commands */
+	input = strdup(gtk_entry_get_text(entry));
 
-	browser_load_uri(b, input);
+	if (strlen(input) <= 1) {
+		/* no input */
+		free(input);
+		/* hide inputbar */
+		isc_abort(b, NULL);
+		return;
+	}
 
+	/* append input to command history */
+	if (!private_browsing) {
+		ripcurl->Global.command_history = g_list_append(ripcurl->Global.command_history, strdup(input));
+	}
+
+	/* tokenize input, skipping first char */
+	tokens = tokenize(input + 1, " ");
 	free(input);
+	command = tokens[0];
+	n = strv_length(tokens);
+
+	/* search commands */
+	for (i = 0; i < LENGTH(commands); i++) {
+		if ((strcmp(command, commands[i].command) == 0)
+				|| (strcmp(command, commands[i].abbrv) == 0)) {
+			ret = commands[i].func(b, n - 1, tokens + 1);
+			processed = TRUE;
+		}
+	}
+
+	if (!processed) {
+		browser_notify(b, ERROR, "Unknown command");
+	}
+
+	/* ret == FALSE : program is exiting */
+	if (ret) {
+		gtk_widget_grab_focus(GTK_WIDGET(b->UI.view));
+	}
+
+	strv_free(tokens);
 }
 
 Browser *browser_new(void)
