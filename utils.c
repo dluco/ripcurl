@@ -243,7 +243,7 @@ int strcmp_s(const char *s1, const char *s2)
 	return strcmp(s1, s2);
 }
 
-unsigned int strv_length(char **strv)
+unsigned int strlenv(char **strv)
 {
 	unsigned int n;
 
@@ -256,7 +256,7 @@ unsigned int strv_length(char **strv)
 	return n;
 }
 
-void strv_free(char **strv)
+void strfreev(char **strv)
 {
 	int i;
 
@@ -269,4 +269,44 @@ void strv_free(char **strv)
 	}
 
 	free(strv);
+}
+
+char *strjoinv(char **strv, const char *separator)
+{
+	char *str, *p;
+	int i;
+	size_t len, separator_len;
+
+	if (!strv) {
+		return NULL;
+	}
+
+	if (!separator) {
+		separator = "";
+	}
+
+	if (*strv) {
+		separator_len = strlen(separator);
+
+		/* get length of joined strv */
+		for (i = 0, len = 0; strv[i]; i++) {
+			len += strlen(strv[i]);
+		}
+		len += separator_len * (i - 1);
+
+		/* build string */
+		str = emalloc(len * sizeof *str + 1);
+		if (!str) {
+			return NULL;
+		}
+		p = stpcpy(str, *strv);
+		for (i = 1; strv[i]; i++) {
+			p = stpcpy(p, separator);
+			p = stpcpy(p, strv[i]);
+		}
+	} else {
+		str = strdup("");
+	}
+
+	return str;
 }

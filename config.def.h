@@ -24,14 +24,16 @@ gboolean private_browsing	=	FALSE;
 
 /* shortcuts */
 Shortcut shortcuts[] = {
-	{ 0,								GDK_Escape,	sc_abort,			ALL,	{ 0,			NULL } },
-	{ GDK_CONTROL_MASK,					GDK_w,		sc_close_window,	NORMAL,	{ 0,			NULL } },
-	{ 0,								GDK_colon,	sc_focus_inputbar,	NORMAL,	{ 0,			":" } },
-	{ GDK_CONTROL_MASK,					GDK_r,		sc_reload,			NORMAL,	{ 0,			NULL } },
-	{ GDK_CONTROL_MASK|GDK_SHIFT_MASK,	GDK_r,		sc_reload,			NORMAL,	{ TRUE,			NULL } },
-	{ GDK_CONTROL_MASK,					GDK_plus,	sc_zoom,			NORMAL,	{ ZOOM_IN,		NULL } },
-	{ GDK_CONTROL_MASK,					GDK_minus,	sc_zoom,			NORMAL,	{ ZOOM_OUT,		NULL } },
-	{ GDK_CONTROL_MASK,					GDK_0,		sc_zoom,			NORMAL,	{ ZOOM_RESET,	NULL } },
+	{ 0,								GDK_Escape,	sc_abort,				ALL,	{ 0,			NULL } },
+	{ GDK_CONTROL_MASK,					GDK_w,		sc_close_window,		NORMAL,	{ 0,			NULL } },
+	{ 0,								GDK_colon,	sc_focus_inputbar,		NORMAL,	{ 0,			":" } },
+	{ 0,								GDK_o,		sc_focus_inputbar,		NORMAL,	{ 0,			":open " } },
+	{ GDK_CONTROL_MASK,					GDK_r,		sc_reload,				NORMAL,	{ 0,			NULL } },
+	{ GDK_CONTROL_MASK|GDK_SHIFT_MASK,	GDK_r,		sc_reload,				NORMAL,	{ TRUE,			NULL } },
+	{ GDK_CONTROL_MASK,					GDK_m,		sc_toggle_statusbar,	NORMAL,	{ 0,			NULL } },
+	{ GDK_CONTROL_MASK,					GDK_plus,	sc_zoom,				NORMAL,	{ ZOOM_IN,		NULL } },
+	{ GDK_CONTROL_MASK,					GDK_minus,	sc_zoom,				NORMAL,	{ ZOOM_OUT,		NULL } },
+	{ GDK_CONTROL_MASK,					GDK_0,		sc_zoom,				NORMAL,	{ ZOOM_RESET,	NULL } },
 };
 
 InputbarShortcut inputbar_shortcuts[] = {
@@ -44,6 +46,7 @@ InputbarShortcut inputbar_shortcuts[] = {
 Command commands[] = {
 	{ "back",		0,		cmd_back },
 	{ "forward",	0,		cmd_forward },
+	{ "open",		"o",	cmd_open },
 	{ "quit",		"q",	cmd_quit },
 	{ "quitall",	0,		cmd_quitall },
 };

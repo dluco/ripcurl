@@ -123,6 +123,7 @@ void sc_abort(Browser *b, const Arg *arg);
 void sc_focus_inputbar(Browser *b, const Arg *arg);
 void sc_close_window(Browser *b, const Arg *arg);
 void sc_reload(Browser *b, const Arg *arg);
+void sc_toggle_statusbar(Browser *b, const Arg *arg);
 void sc_zoom(Browser *b, const Arg *arg);
 
 /* inputbar shortcut functions */
@@ -132,6 +133,7 @@ void isc_command_history(Browser *b, const Arg *arg);
 /* commands */
 gboolean cmd_back(Browser *b, int argc, char **argv);
 gboolean cmd_forward(Browser *b, int argc, char **argv);
+gboolean cmd_open(Browser *b, int argc, char **argv);
 gboolean cmd_quit(Browser *b, int argc, char **argv);
 gboolean cmd_quitall(Browser *b, int argc, char **argv);
 
@@ -242,6 +244,12 @@ void sc_reload(Browser *b, const Arg *arg)
 	}
 }
 
+void sc_toggle_statusbar(Browser *b, const Arg *arg)
+{
+	gtk_widget_set_visible(GTK_WIDGET(b->UI.statusbar),
+			!gtk_widget_get_visible(GTK_WIDGET(b->UI.statusbar)));
+}
+
 void sc_zoom(Browser *b, const Arg *arg)
 {
 	browser_zoom(b, arg->n);
@@ -266,8 +274,6 @@ void isc_command_history(Browser *b, const Arg *arg)
 			current = (len + current - 1) % len;
 		}
 
-		printf("current=%d\n", current);
-
 		command = g_list_nth_data(ripcurl->Global.command_history, current);
 		browser_notify(b, DEFAULT, command);
 		gtk_editable_set_position(GTK_EDITABLE(b->UI.inputbar), -1);
@@ -288,20 +294,37 @@ gboolean cmd_forward(Browser *b, int argc, char **argv)
 	return TRUE;
 }
 
+gboolean cmd_open(Browser *b, int argc, char **argv)
+{
+	char *uri;
+
+	if (argc <= 0 || argv[argc] != NULL) {
+		return TRUE;
+	}
+
+	uri = strjoinv(argv, " ");
+	browser_load_uri(b, uri);
+
+	free(uri);
+
+	return TRUE;
+}
+
 gboolean cmd_quit(Browser *b, int argc, char **argv)
 {
 	browser_destroy(b);
 
-	return FALSE;
+	return TRUE;
 }
 
 gboolean cmd_quitall(Browser *b, int argc, char **argv)
 {
+	
 	while (ripcurl->Global.browsers) {
 		browser_destroy(ripcurl->Global.browsers->data);
 	}
 
-	return FALSE;
+	return TRUE;
 }
 
 void cb_win_destroy(GtkWidget * widget, Browser * b)
@@ -481,6 +504,7 @@ void cb_inputbar_activate(GtkEntry *entry, Browser *b)
 	int n, i;
 	gboolean ret = FALSE;
 	gboolean processed = FALSE;
+	GList *list;
 
 	input = strdup(gtk_entry_get_text(entry));
 
@@ -501,7 +525,7 @@ void cb_inputbar_activate(GtkEntry *entry, Browser *b)
 	tokens = tokenize(input + 1, " ");
 	free(input);
 	command = tokens[0];
-	n = strv_length(tokens);
+	n = strlenv(tokens);
 
 	/* search commands */
 	for (i = 0; i < LENGTH(commands); i++) {
@@ -515,16 +539,22 @@ void cb_inputbar_activate(GtkEntry *entry, Browser *b)
 
 	if (!processed) {
 		browser_notify(b, ERROR, "Unknown command");
-	} else {
-		gtk_widget_hide(GTK_WIDGET(b->UI.inputbar));
 	}
 
-	/* ret == FALSE : program is exiting */
-	if (ret) {
-		gtk_widget_grab_focus(GTK_WIDGET(b->UI.view));
+	/* check if b was destroyed by a command */
+	for (list = ripcurl->Global.browsers; list; list = g_list_next(list)) {
+		if (list->data == b) {
+			/* browser found - grab focus */
+			gtk_widget_grab_focus(GTK_WIDGET(b->UI.view));
+
+			/* ret == TRUE: hide inputbar */
+			if (ret) {
+				isc_abort(b, NULL);
+			}
+		}
 	}
 
-	strv_free(tokens);
+	strfreev(tokens);
 }
 
 Browser *browser_new(void)
