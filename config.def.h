@@ -24,28 +24,32 @@ gboolean private_browsing	=	FALSE;
 
 /* shortcuts */
 Shortcut shortcuts[] = {
-	{ 0,								GDK_Escape,	sc_abort,				ALL,	{ 0,			NULL } },
-	{ GDK_CONTROL_MASK,					GDK_w,		sc_close_window,		NORMAL,	{ 0,			NULL } },
-	{ 0,								GDK_colon,	sc_focus_inputbar,		NORMAL,	{ 0,			":" } },
-	{ 0,								GDK_o,		sc_focus_inputbar,		NORMAL,	{ 0,			":open " } },
-	{ 0,								GDK_O,		sc_focus_inputbar,		NORMAL,	{ 0,			":winopen " } },
-	{ GDK_CONTROL_MASK,					GDK_comma,	sc_nav_history,			NORMAL,	{ PREVIOUS,		NULL } },
-	{ GDK_CONTROL_MASK,					GDK_period,	sc_nav_history,			NORMAL,	{ NEXT,			NULL } },
-	{ GDK_CONTROL_MASK,					GDK_n,		sc_new_window,			NORMAL,	{ 0,			NULL } },
-	{ GDK_CONTROL_MASK,					GDK_p,		sc_print,				NORMAL,	{ 0,			NULL } },
-	{ GDK_CONTROL_MASK,					GDK_r,		sc_reload,				NORMAL,	{ 0,			NULL } },
-	{ GDK_CONTROL_MASK|GDK_SHIFT_MASK,	GDK_r,		sc_reload,				NORMAL,	{ TRUE,			NULL } },
-	{ GDK_CONTROL_MASK,					GDK_m,		sc_toggle_statusbar,	NORMAL,	{ 0,			NULL } },
-	{ GDK_CONTROL_MASK,					GDK_s,		sc_toggle_source,		NORMAL,	{ 0,			NULL } },
-	{ GDK_CONTROL_MASK,					GDK_plus,	sc_zoom,				NORMAL,	{ ZOOM_IN,		NULL } },
-	{ GDK_CONTROL_MASK,					GDK_minus,	sc_zoom,				NORMAL,	{ ZOOM_OUT,		NULL } },
-	{ GDK_CONTROL_MASK,					GDK_0,		sc_zoom,				NORMAL,	{ ZOOM_RESET,	NULL } },
+	{ 0,								GDK_Escape,		sc_abort,				ALL,	{ 0,			NULL } },
+	{ GDK_CONTROL_MASK,					GDK_w,			sc_close_window,		NORMAL,	{ 0,			NULL } },
+	{ 0,								GDK_colon,		sc_focus_inputbar,		NORMAL,	{ 0,			":" } },
+	{ 0,								GDK_slash,		sc_focus_inputbar,		NORMAL,	{ 0,			"/" } },
+	{ 0,								GDK_question,	sc_focus_inputbar,		NORMAL,	{ 0,			"?" } },
+	{ 0,								GDK_o,			sc_focus_inputbar,		NORMAL,	{ 0,			":open " } },
+	{ 0,								GDK_O,			sc_focus_inputbar,		NORMAL,	{ 0,			":winopen " } },
+	{ GDK_CONTROL_MASK,					GDK_comma,		sc_nav_history,			NORMAL,	{ PREVIOUS,		NULL } },
+	{ GDK_CONTROL_MASK,					GDK_period,		sc_nav_history,			NORMAL,	{ NEXT,			NULL } },
+	{ GDK_CONTROL_MASK,					GDK_n,			sc_new_window,			NORMAL,	{ 0,			NULL } },
+	{ GDK_CONTROL_MASK,					GDK_p,			sc_print,				NORMAL,	{ 0,			NULL } },
+	{ GDK_CONTROL_MASK,					GDK_r,			sc_reload,				NORMAL,	{ 0,			NULL } },
+	{ GDK_CONTROL_MASK|GDK_SHIFT_MASK,	GDK_r,			sc_reload,				NORMAL,	{ TRUE,			NULL } },
+	{ 0,								GDK_n,			sc_search,				NORMAL,	{ NEXT,			NULL } },
+	{ 0,								GDK_N,			sc_search,				NORMAL,	{ PREVIOUS,		NULL } },
+	{ GDK_CONTROL_MASK,					GDK_m,			sc_toggle_statusbar,	NORMAL,	{ 0,			NULL } },
+	{ GDK_CONTROL_MASK,					GDK_s,			sc_toggle_source,		NORMAL,	{ 0,			NULL } },
+	{ GDK_CONTROL_MASK,					GDK_plus,		sc_zoom,				NORMAL,	{ ZOOM_IN,		NULL } },
+	{ GDK_CONTROL_MASK,					GDK_minus,		sc_zoom,				NORMAL,	{ ZOOM_OUT,		NULL } },
+	{ GDK_CONTROL_MASK,					GDK_0,			sc_zoom,				NORMAL,	{ ZOOM_RESET,	NULL } },
 };
 
 InputbarShortcut inputbar_shortcuts[] = {
-	{ 0,								GDK_Escape,	isc_abort,					{ 0,			NULL } },
-	{ 0,								GDK_Up,		isc_command_history,		{ PREVIOUS,		NULL } },
-	{ 0,								GDK_Down,	isc_command_history,		{ NEXT,			NULL } },
+	{ 0,				GDK_Escape,		isc_abort,				{ 0,			NULL } },
+	{ 0,				GDK_Up,			isc_command_history,	{ PREVIOUS,		NULL } },
+	{ 0,				GDK_Down,		isc_command_history,	{ NEXT,			NULL } },
 };
 
 /* commands */
@@ -58,4 +62,10 @@ Command commands[] = {
 	{ "reload",		"r",	cmd_reload },
 	{ "quitall",	0,		cmd_quitall },
 	{ "winopen",	"W",	cmd_winopen },
+};
+
+/* special commands */
+SpecialCommand special_commands[] = {
+	{ '/',	scmd_search,	{ NEXT,		NULL } },
+	{ '?',	scmd_search,	{ PREVIOUS,	NULL } },
 };

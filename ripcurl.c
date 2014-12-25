@@ -37,6 +37,7 @@ typedef struct _Arg Arg;
 typedef struct _Shortcut Shortcut;
 typedef struct _InputbarShortcut InputbarShortcut;
 typedef struct _Command Command;
+typedef struct _SpecialCommand SpecialCommand;
 typedef struct _Ripcurl Ripcurl;
 typedef struct _Browser Browser;
 
@@ -64,6 +65,12 @@ struct _Command {
 	char *name;
 	char *abbrv;
 	gboolean (*func)(Browser *b, int argc, char **argv);
+};
+
+struct _SpecialCommand {
+	char identifier;
+	gboolean (*func)(Browser *b, char *input, const Arg *arg, gboolean activate);
+	const Arg arg;
 };
 
 struct _Ripcurl {
@@ -126,6 +133,7 @@ void sc_nav_history(Browser *b, const Arg *arg);
 void sc_new_window(Browser *b, const Arg *arg);
 void sc_print(Browser *b, const Arg *arg);
 void sc_reload(Browser *b, const Arg *arg);
+void sc_search(Browser *b, const Arg *arg);
 void sc_toggle_statusbar(Browser *b, const Arg *arg);
 void sc_toggle_source(Browser *b, const Arg *arg);
 void sc_zoom(Browser *b, const Arg *arg);
@@ -144,8 +152,12 @@ gboolean cmd_reload(Browser *b, int argc, char **argv);
 gboolean cmd_quitall(Browser *b, int argc, char **argv);
 gboolean cmd_winopen(Browser *b, int argc, char **argv);
 
+/* special commands */
+gboolean scmd_search(Browser *b, char *input, const Arg *arg, gboolean activate);
+
 /* callbacks */
 void cb_win_destroy(GtkWidget *widget, Browser *b);
+gboolean cb_wv_console_message(WebKitWebView *view, char *message, int line, char *source_id, Browser *b);
 gboolean cb_wv_keypress(GtkWidget *widget, GdkEventKey *event, Browser *b);
 WebKitWebView *cb_wv_create_web_view(WebKitWebView *v, WebKitWebFrame *f, Browser *b);
 void cb_wv_notify_load_status(WebKitWebView *view, GParamSpec *pspec, Browser *b);
@@ -158,6 +170,7 @@ void cb_download_notify_status(WebKitDownload *download, GParamSpec *pspec, Brow
 void cb_wv_scrolled(GtkAdjustment *adjustment, Browser *b);
 
 gboolean cb_inputbar_keypress(GtkWidget *widget, GdkEventKey *event, Browser *b);
+void cb_inputbar_changed(GtkEntry *entry, Browser *b);
 void cb_inputbar_activate(GtkEntry *entry, Browser *b);
 
 /* browser functions */
@@ -166,6 +179,8 @@ void browser_show(Browser * b);
 void browser_apply_settings(Browser *b);
 void browser_change_mode(Browser *b, int mode);
 void browser_nav_history(Browser *b, int direction);
+void browser_search_and_highlight(Browser *b, char *input, int direction);
+void browser_update_search_highlight(Browser *b, char *search_text);
 void browser_notify(Browser *b, int level, char *message);
 void browser_load_uri(Browser * b, char *uri);
 void browser_reload(Browser * b, int bypass);
@@ -269,6 +284,11 @@ void sc_print(Browser *b, const Arg *arg)
 	webkit_web_frame_print(frame);
 }
 
+void sc_search(Browser *b, const Arg *arg)
+{
+	browser_search_and_highlight(b, NULL, arg->n);
+}
+
 void sc_toggle_statusbar(Browser *b, const Arg *arg)
 {
 	gtk_widget_set_visible(GTK_WIDGET(b->UI.statusbar),
@@ -290,6 +310,7 @@ void sc_zoom(Browser *b, const Arg *arg)
 
 void isc_abort(Browser *b, const Arg *arg)
 {
+	browser_notify(b, DEFAULT, "");
 	gtk_widget_grab_focus(GTK_WIDGET(b->UI.view));
 	gtk_widget_hide(GTK_WIDGET(b->UI.inputbar));
 }
@@ -387,9 +408,37 @@ gboolean cmd_winopen(Browser *b, int argc, char **argv)
 	return TRUE;
 }
 
+gboolean scmd_search(Browser *b, char *input, const Arg *arg, gboolean activate)
+{
+	if (input && !strlen(input)) {
+		return TRUE;
+	}
+
+	/* update highlighted matches */
+	browser_update_search_highlight(b, input);
+
+	/* only perform search if activated */
+	if (activate) {
+		browser_search_and_highlight(b, input, arg->n);
+	}
+
+	return TRUE;
+}
+
 void cb_win_destroy(GtkWidget * widget, Browser * b)
 {
 	browser_destroy(b);
+}
+
+gboolean cb_wv_console_message(WebKitWebView *view, char *message, int line, char *source_id, Browser *b)
+{
+	if (!strcmp(message, "hintmode_off") || !strcmp(message, "insertmode_off")) {
+		browser_change_mode(b, NORMAL);
+	} else if (!strcmp(message, "insertmode_on")) {
+		browser_change_mode(b, INSERT);
+	}
+
+	return FALSE;
 }
 
 gboolean cb_wv_keypress(GtkWidget *widget, GdkEventKey *event, Browser *b)
@@ -397,7 +446,6 @@ gboolean cb_wv_keypress(GtkWidget *widget, GdkEventKey *event, Browser *b)
 	unsigned int keyval;
 	GdkModifierType consumed_modifiers;
 	int i;
-	gboolean processed = FALSE;
 
 	gdk_keymap_translate_keyboard_state(
 			ripcurl->Global.keymap, event->hardware_keycode, event->state, event->group, /* in */
@@ -409,11 +457,11 @@ gboolean cb_wv_keypress(GtkWidget *widget, GdkEventKey *event, Browser *b)
 				&& ripcurl->Global.mode & shortcuts[i].mode
 				&& shortcuts[i].func) {
 			shortcuts[i].func(b, &(shortcuts[i].arg));
-			processed = TRUE;
+			return TRUE;
 		}
 	}
 
-	return processed;
+	return FALSE;
 }
 
 WebKitWebView *cb_wv_create_web_view(WebKitWebView *v, WebKitWebFrame *f, Browser *b)
@@ -554,12 +602,32 @@ gboolean cb_inputbar_keypress(GtkWidget *widget, GdkEventKey *event, Browser *b)
 	return processed;
 }
 
-void cb_inputbar_activate(GtkEntry *entry, Browser *b)
+void cb_inputbar_changed(GtkEntry *entry, Browser *b)
 {
 	char *input;
-	char **tokens;
-	char *command;
-	int n, i;
+	char identifier;
+	int i;
+
+	input = strdup(gtk_entry_get_text(entry));
+	identifier = input[0];
+
+	/* special commands */
+	for (i = 0; i < LENGTH(special_commands); i++) {
+		if (identifier == special_commands[i].identifier) {
+			special_commands[i].func(b, input + 1, &(special_commands[i].arg), FALSE);
+			free(input);
+			return;
+		}
+	}
+
+	free(input);
+}
+
+void cb_inputbar_activate(GtkEntry *entry, Browser *b)
+{
+	char *input, **tokens, *command;
+	char identifier;
+	int i, n;
 	gboolean ret = FALSE;
 	gboolean processed = FALSE;
 	GList *list;
@@ -572,6 +640,23 @@ void cb_inputbar_activate(GtkEntry *entry, Browser *b)
 		/* hide inputbar */
 		isc_abort(b, NULL);
 		return;
+	}
+
+	identifier = input[0];
+
+	/* special commands */
+	for (i = 0; i < LENGTH(special_commands); i++) {
+		if (identifier == special_commands[i].identifier) {
+			ret = special_commands[i].func(b, input + 1, &(special_commands[i].arg), TRUE);
+
+			gtk_widget_grab_focus(GTK_WIDGET(b->UI.view));
+			/* ret == TRUE: hide inputbar */
+			if (ret) {
+				isc_abort(b, NULL);
+			}
+			free(input);
+			return;
+		}
 	}
 
 	/* append input to command history */
@@ -639,6 +724,7 @@ Browser *browser_new(void)
 	/* view */
 	adjustment = gtk_scrolled_window_get_vadjustment(b->UI.scrolled_window);
 
+	g_signal_connect(G_OBJECT(b->UI.view), "console-message", G_CALLBACK(cb_wv_console_message), b);
 	g_signal_connect(G_OBJECT(b->UI.view), "create-web-view", G_CALLBACK(cb_wv_create_web_view), b);
 	g_signal_connect(G_OBJECT(b->UI.view), "hovering-over-link", G_CALLBACK(cb_wv_hover_link), b);
 	g_signal_connect(G_OBJECT(b->UI.view), "mime-type-policy-decision-requested", G_CALLBACK(cb_wv_mime_type_decision), b);
@@ -665,6 +751,7 @@ Browser *browser_new(void)
 
 	/* inputbar */
 	g_signal_connect(G_OBJECT(b->UI.inputbar), "key-press-event", G_CALLBACK(cb_inputbar_keypress), b);
+	g_signal_connect(G_OBJECT(b->UI.inputbar), "changed", G_CALLBACK(cb_inputbar_changed), b);
 	g_signal_connect(G_OBJECT(b->UI.inputbar), "activate", G_CALLBACK(cb_inputbar_activate), b);
 	
 	/* packing */
@@ -762,6 +849,42 @@ void browser_nav_history(Browser *b, int direction)
 	default:
 		break;
 	}
+}
+
+void browser_search_and_highlight(Browser *b, char *input, int direction)
+{
+	static char *search_text = NULL;
+	gboolean forward;
+
+	if (input) {
+		/* free search_text from previous search */
+		if (search_text) {
+			free(search_text);
+		}
+		search_text = strdup(input);
+	}
+
+	if (search_text == NULL) {
+		/*
+		 * the only way this should happen is if sc_search is called
+		 * and no searches have been performed during this session.
+		 */
+		return;
+	}
+
+	forward = (direction == NEXT) ? TRUE : FALSE;
+
+	/* TODO: set case-sensitivity with "/.../c" */
+	webkit_web_view_search_text(b->UI.view, search_text, FALSE, forward, TRUE);
+}
+
+void browser_update_search_highlight(Browser *b, char *search_text)
+{
+	/* remove previous highlighting */
+	webkit_web_view_unmark_text_matches(b->UI.view);
+	/* highlight all occurrences of search text */
+	webkit_web_view_mark_text_matches(b->UI.view, search_text, FALSE, 0);
+	webkit_web_view_set_highlight_text_matches(b->UI.view, TRUE);
 }
 
 void browser_notify(Browser *b, int level, char *message)
