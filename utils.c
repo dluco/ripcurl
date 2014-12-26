@@ -243,6 +243,42 @@ int strcmp_s(const char *s1, const char *s2)
 	return strcmp(s1, s2);
 }
 
+char *strconcat(const char *s1, ...)
+{
+	size_t len;
+	va_list args;
+	char *s, *p, *concat;
+
+	if (!s1) {
+		return NULL;
+	}
+
+	/* get length of concatenated string */
+	len = strlen(s1);
+
+	va_start(args, s1);
+	while ((s = va_arg(args, char *))) {
+		len += strlen(s);
+	}
+	va_end(args);
+
+	concat = emalloc(len * sizeof *concat + 1);
+	if (!concat) {
+		return NULL;
+	}
+
+	p = concat;
+	p = stpcpy(p, s1);
+
+	va_start(args, s1);
+	while ((s = va_arg(args, char *))) {
+		p = stpcpy(p, s);
+	}
+	va_end(args);
+
+	return concat;
+}
+
 unsigned int strlenv(char **strv)
 {
 	unsigned int n;

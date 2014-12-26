@@ -55,6 +55,7 @@ InputbarShortcut inputbar_shortcuts[] = {
 /* commands */
 Command commands[] = {
 	{ "back",		0,		cmd_back },
+	{ "bmark",		"b",	cmd_bookmark },
 	{ "forward",	0,		cmd_forward },
 	{ "open",		"o",	cmd_open },
 	{ "print",		0,		cmd_print },

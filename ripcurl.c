@@ -75,7 +75,6 @@ struct _SpecialCommand {
 
 struct _Ripcurl {
 	struct {
-		int mode;
 		GList *browsers;
 		GList *bookmarks;
 		GList *history;
@@ -103,6 +102,11 @@ struct _Ripcurl {
 
 struct _Browser {
 	struct {
+		int mode;
+		int progress;
+	} State;
+
+	struct {
 		GtkWidget *window;
 		GtkBox *box;
 		GtkScrolledWindow *scrolled_window;
@@ -117,10 +121,6 @@ struct _Browser {
 		GtkLabel *buffer;
 		GtkLabel *position;
 	} Statusbar;
-
-	struct {
-		int progress;
-	} State;
 };
 
 Ripcurl *ripcurl;
@@ -144,6 +144,7 @@ void isc_command_history(Browser *b, const Arg *arg);
 
 /* commands */
 gboolean cmd_back(Browser *b, int argc, char **argv);
+gboolean cmd_bookmark(Browser *b, int argc, char **argv);
 gboolean cmd_forward(Browser *b, int argc, char **argv);
 gboolean cmd_open(Browser *b, int argc, char **argv);
 gboolean cmd_print(Browser *b, int argc, char **argv);
@@ -223,7 +224,7 @@ void sc_abort(Browser *b, const Arg *arg)
 	/* unmark search results */
 	webkit_web_view_unmark_text_matches(b->UI.view);
 
-	gtk_widget_grab_focus(GTK_WIDGET(b->UI.view));
+	gtk_widget_grab_focus(GTK_WIDGET(b->UI.scrolled_window));
 }
 
 void sc_focus_inputbar(Browser *b, const Arg *arg)
@@ -311,7 +312,7 @@ void sc_zoom(Browser *b, const Arg *arg)
 void isc_abort(Browser *b, const Arg *arg)
 {
 	browser_notify(b, DEFAULT, "");
-	gtk_widget_grab_focus(GTK_WIDGET(b->UI.view));
+	gtk_widget_grab_focus(GTK_WIDGET(b->UI.scrolled_window));
 	gtk_widget_hide(GTK_WIDGET(b->UI.inputbar));
 }
 
@@ -337,6 +338,41 @@ void isc_command_history(Browser *b, const Arg *arg)
 gboolean cmd_back(Browser *b, int argc, char **argv)
 {
 	browser_nav_history(b, PREVIOUS);
+
+	return TRUE;
+}
+
+gboolean cmd_bookmark(Browser *b, int argc, char **argv)
+{
+	GList *list;
+	char *uri, *tags, *bookmark;
+
+	uri = strdup(webkit_web_view_get_uri(b->UI.view));
+
+	/* check if bookmark already exists in list */
+	for (list = ripcurl->Global.bookmarks; list; list = g_list_next(list)) {
+		if (!strcmp(uri, (char *) list->data)) {
+			/* remove old bookmark so tags are updated */
+			free(list->data);
+			ripcurl->Global.bookmarks = g_list_delete_link(ripcurl->Global.bookmarks, list);
+			break;
+		}
+	}
+
+	/* append any tags to the bookmark string */
+	/* NOTE: argv is null terminated */
+	if (argc > 0) {
+		tags = strjoinv(argv, " ");
+		bookmark = strconcat(uri, " ", tags, NULL);
+
+		free(tags);
+	} else {
+		bookmark = strdup(uri);
+	}
+
+	ripcurl->Global.bookmarks = g_list_prepend(ripcurl->Global.bookmarks, bookmark);
+
+	free(uri);
 
 	return TRUE;
 }
@@ -454,7 +490,7 @@ gboolean cb_wv_keypress(GtkWidget *widget, GdkEventKey *event, Browser *b)
 	for (i = 0; i < LENGTH(shortcuts); i++) {
 		if (keyval == shortcuts[i].keyval
 				&& (event->state & ~consumed_modifiers & ALL_MASK) == shortcuts[i].mask
-				&& ripcurl->Global.mode & shortcuts[i].mode
+				&& b->State.mode & shortcuts[i].mode
 				&& shortcuts[i].func) {
 			shortcuts[i].func(b, &(shortcuts[i].arg));
 			return TRUE;
@@ -649,7 +685,7 @@ void cb_inputbar_activate(GtkEntry *entry, Browser *b)
 		if (identifier == special_commands[i].identifier) {
 			ret = special_commands[i].func(b, input + 1, &(special_commands[i].arg), TRUE);
 
-			gtk_widget_grab_focus(GTK_WIDGET(b->UI.view));
+			gtk_widget_grab_focus(GTK_WIDGET(b->UI.scrolled_window));
 			/* ret == TRUE: hide inputbar */
 			if (ret) {
 				isc_abort(b, NULL);
@@ -688,7 +724,7 @@ void cb_inputbar_activate(GtkEntry *entry, Browser *b)
 	for (list = ripcurl->Global.browsers; list; list = g_list_next(list)) {
 		if (list->data == b) {
 			/* browser found - grab focus */
-			gtk_widget_grab_focus(GTK_WIDGET(b->UI.view));
+			gtk_widget_grab_focus(GTK_WIDGET(b->UI.scrolled_window));
 
 			/* ret == TRUE: hide inputbar */
 			if (ret) {
@@ -765,6 +801,11 @@ Browser *browser_new(void)
 	/* add to list of browsers */
 	ripcurl->Global.browsers = g_list_prepend(ripcurl->Global.browsers, b);
 
+	/* mode */
+	b->State.mode = NORMAL;
+
+	gtk_widget_grab_focus(GTK_WIDGET(b->UI.scrolled_window));
+
 	return b;
 }
 
@@ -833,7 +874,7 @@ void browser_change_mode(Browser *b, int mode)
 		mode = NORMAL;
 	}
 
-	ripcurl->Global.mode = mode;
+	b->State.mode = mode;
 	browser_notify(b, DEFAULT, text);
 }
 
@@ -1133,9 +1174,6 @@ void history_write(void)
 
 void ripcurl_init(void)
 {
-	/* mode */
-	ripcurl->Global.mode = NORMAL;
-
 	/* webkit settings */
 	ripcurl->Global.webkit_settings = webkit_web_settings_new();
 
