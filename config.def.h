@@ -41,9 +41,9 @@ Shortcut shortcuts[] = {
 	{ 0,								GDK_N,			sc_search,				NORMAL,	{ PREVIOUS,		NULL } },
 	{ GDK_CONTROL_MASK,					GDK_m,			sc_toggle_statusbar,	NORMAL,	{ 0,			NULL } },
 	{ GDK_CONTROL_MASK,					GDK_s,			sc_toggle_source,		NORMAL,	{ 0,			NULL } },
-	{ GDK_CONTROL_MASK,					GDK_plus,		sc_zoom,				NORMAL,	{ ZOOM_IN,		NULL } },
-	{ GDK_CONTROL_MASK,					GDK_minus,		sc_zoom,				NORMAL,	{ ZOOM_OUT,		NULL } },
-	{ GDK_CONTROL_MASK,					GDK_0,			sc_zoom,				NORMAL,	{ ZOOM_RESET,	NULL } },
+	{ 0,								GDK_plus,		sc_zoom,				NORMAL,	{ ZOOM_IN,		NULL } },
+	{ 0,								GDK_minus,		sc_zoom,				NORMAL,	{ ZOOM_OUT,		NULL } },
+	{ 0,								GDK_equal,		sc_zoom,				NORMAL,	{ ZOOM_RESET,	NULL } },
 };
 
 InputbarShortcut inputbar_shortcuts[] = {
