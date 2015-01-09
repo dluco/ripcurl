@@ -3,7 +3,11 @@
 #include <stdarg.h>
 #include <string.h>
 
+#include <glib.h>
+
 #include "utils.h"
+
+#define MAXLINE 1024
 
 struct queue_node {
 	char *data;
@@ -159,7 +163,7 @@ char **tokenize(char *str, char *delims)
 	free(s);
 
 	/* length of queue is the number of tokens */
-	result = emalloc(queue_length(&q) * sizeof *result + 1);
+	result = emalloc((queue_length(&q) + 1) * sizeof *result);
 	if (!result) {
 		/* error */
 		queue_free(&q);
@@ -209,7 +213,7 @@ int asprintf(char **str, char *fmt, ...)
 	}
 	va_end(argp);
 
-	*str = emalloc(len+1);
+	*str = emalloc((len + 1) * sizeof **str);
 	if (!str) {
 		return -1;
 	}
@@ -234,6 +238,9 @@ void chomp(char *str)
 	}
 }
 
+/*
+ * safe strcmp
+ */
 int strcmp_s(const char *s1, const char *s2)
 {
 	if (!s1)
@@ -241,6 +248,32 @@ int strcmp_s(const char *s1, const char *s2)
 	if (!s2)
 		return (s1 != s2);
 	return strcmp(s1, s2);
+}
+
+/*
+ * append src string to dest string
+ *
+ * NOTE: dest MUST be a dynamically allocated string or NULL
+ */
+char *strappend(char *dest, char *src)
+{
+	char *temp;
+
+	if (!dest) {
+		return strdup(src);
+	}
+
+	if ((sizeof dest) < (strlen(dest) + strlen(src))) {
+		/* allocate temp string to fit both dest and src */
+		temp = emalloc((strlen(dest) + strlen(src) + 1) * sizeof *temp);
+		temp = strcpy(temp, dest);
+		temp = strcat(temp, src);
+		free(dest);
+		return temp;
+	} else {
+		/* dest has enough room for src */
+		return strcat(dest, src);
+	}
 }
 
 char *strconcat(const char *s1, ...)
@@ -262,7 +295,7 @@ char *strconcat(const char *s1, ...)
 	}
 	va_end(args);
 
-	concat = emalloc(len * sizeof *concat + 1);
+	concat = emalloc((len + 1) * sizeof *concat);
 	if (!concat) {
 		return NULL;
 	}
@@ -331,7 +364,7 @@ char *strjoinv(char **strv, const char *separator)
 		len += separator_len * (i - 1);
 
 		/* build string */
-		str = emalloc(len * sizeof *str + 1);
+		str = emalloc((len + 1) * sizeof *str);
 		if (!str) {
 			return NULL;
 		}
@@ -345,4 +378,39 @@ char *strjoinv(char **strv, const char *separator)
 	}
 
 	return str;
+}
+
+/*
+ * read contents of file and store in GList
+ */
+GList *read_file(char *filename, GList *list)
+{
+	FILE *fp;
+	char *line;
+	size_t nbytes = MAXLINE;
+
+	if (!(fp = fopen(filename, "r"))) {
+		/* file not found */
+		return list;
+	}
+
+	line = emalloc(nbytes * sizeof *line);
+
+	while (getline(&line, &nbytes, fp) != -1) {
+		chomp(line);
+		if (strlen(line) == 0) {
+			continue;
+		}
+		list = g_list_prepend(list, strdup(line));
+	}
+
+	if (line) {
+		free(line);
+	}
+
+	if (fclose(fp)) {
+		print_err("unable to close file \"%s\"\n", filename);
+	}
+
+	return list;
 }

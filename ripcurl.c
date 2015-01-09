@@ -13,17 +13,17 @@
 #define LENGTH(x)		(sizeof x / sizeof x[0])
 #define ALL_MASK		(GDK_CONTROL_MASK | GDK_SHIFT_MASK | GDK_MOD1_MASK)
 
-#define MAXLINE 1024
-
 /* enums */
 enum {
 	DEFAULT,
 	ERROR,
+	WARNING,
 	NEXT,
 	PREVIOUS,
 	ZOOM_IN,
 	ZOOM_OUT,
 	ZOOM_RESET,
+	DELETE_CHAR,
 };
 
 /* modes */
@@ -96,6 +96,8 @@ struct _Ripcurl {
 		GdkColor inputbar_fg;
 		GdkColor statusbar_bg;
 		GdkColor statusbar_fg;
+		GdkColor notification_e_bg;
+		GdkColor notification_e_fg;
 		PangoFontDescription *font;
 	} Style;
 };
@@ -141,6 +143,7 @@ void sc_zoom(Browser *b, const Arg *arg);
 /* inputbar shortcut functions */
 void isc_abort(Browser *b, const Arg *arg);
 void isc_command_history(Browser *b, const Arg *arg);
+void isc_input_manipulation(Browser *b, const Arg *arg);
 
 /* commands */
 gboolean cmd_back(Browser *b, int argc, char **argv);
@@ -333,6 +336,28 @@ void isc_command_history(Browser *b, const Arg *arg)
 		browser_notify(b, DEFAULT, command);
 		gtk_editable_set_position(GTK_EDITABLE(b->UI.inputbar), -1);
 	}
+}
+
+void isc_input_manipulation(Browser *b, const Arg *arg)
+{
+	char *input;
+	int length, pos;
+
+	input = strdup(gtk_entry_get_text(b->UI.inputbar));
+	length = strlen(input);
+	pos = gtk_editable_get_position(GTK_EDITABLE(b->UI.inputbar));
+
+	if (arg->n == DELETE_CHAR) {
+		/* delete the previous character */
+		if (length == 1) {
+			/* deletion of last character hides inputbar */
+			isc_abort(b, NULL);
+		}
+
+		gtk_editable_delete_text(GTK_EDITABLE(b->UI.inputbar), pos - 1, pos);
+	}
+
+	free(input);
 }
 
 gboolean cmd_back(Browser *b, int argc, char **argv)
@@ -930,10 +955,26 @@ void browser_update_search_highlight(Browser *b, char *search_text)
 
 void browser_notify(Browser *b, int level, char *message)
 {
+	/* show inputbar */
 	if (!gtk_widget_get_visible(GTK_WIDGET(b->UI.inputbar))) {
 		gtk_widget_show(GTK_WIDGET(b->UI.inputbar));
 	}
 
+	/* set inputbar color */
+	switch (level) {
+	case ERROR:
+		gtk_widget_modify_base(GTK_WIDGET(b->UI.inputbar), GTK_STATE_NORMAL, &(ripcurl->Style.notification_e_bg));
+		gtk_widget_modify_text(GTK_WIDGET(b->UI.inputbar), GTK_STATE_NORMAL, &(ripcurl->Style.notification_e_fg));
+		break;
+	case WARNING:
+		break;
+	default:
+		gtk_widget_modify_base(GTK_WIDGET(b->UI.inputbar), GTK_STATE_NORMAL, &(ripcurl->Style.inputbar_bg));
+		gtk_widget_modify_text(GTK_WIDGET(b->UI.inputbar), GTK_STATE_NORMAL, &(ripcurl->Style.inputbar_fg));
+		break;
+	}
+
+	/* display message, if any */
 	if (message) {
 		gtk_entry_set_text(b->UI.inputbar, message);
 	}
@@ -982,12 +1023,33 @@ void browser_zoom(Browser *b, int mode)
 void browser_update_uri(Browser *b)
 {
 	const char *uri = webkit_web_view_get_uri(b->UI.view);
-	char *text;
+	char *text, *nav, *temp;
 
 	if (b->State.progress > 0 && b->State.progress < 100) {
 		asprintf(&text, "Loading... %s (%d%%)", (uri) ? uri : "", b->State.progress);
 	} else {
 		text = strdup((uri) ? uri : "[No name]");
+	}
+
+	/* check for navigation */
+	if (uri) {
+		nav = strdup("");
+
+		if (webkit_web_view_can_go_back(b->UI.view)) {
+			strappend(nav, "-");
+		}
+		if (webkit_web_view_can_go_forward(b->UI.view)) {
+			strappend(nav, "+");
+		}
+
+		if (strlen(nav) > 0) {
+			/* navigation possible */
+			temp = strconcat(text, " [", nav, "]", NULL);
+			free(text);
+			text = temp;
+		}
+
+		free(nav);
 	}
 
 	gtk_label_set_text(b->Statusbar.text, text);
@@ -1049,36 +1111,6 @@ void browser_destroy(Browser * b)
 	}
 }
 
-void bookmarks_read(void)
-{
-	FILE *fp;
-	char *line;
-	size_t nbytes = MAXLINE;
-
-	if (!(fp = fopen(ripcurl->Files.bookmarks_file, "r"))) {
-		/* bookmarks file not found - one will be created on exit */
-		return;
-	}
-
-	line = emalloc(nbytes * sizeof *line);
-
-	while (getline(&line, &nbytes, fp) != -1) {
-		chomp(line);
-		if (strlen(line) == 0) {
-			continue;
-		}
-		ripcurl->Global.bookmarks = g_list_append(ripcurl->Global.bookmarks, strdup(line));
-	}
-
-	if (line) {
-		free(line);
-	}
-
-	if (fclose(fp)) {
-		print_err("unable to close bookmarks file\n");
-	}
-}
-
 void bookmarks_write(void)
 {
 	GList *list;
@@ -1115,36 +1147,6 @@ void history_add(char *uri)
 	} else {
 		/* uri not present - prepend to list */
 		ripcurl->Global.history = g_list_prepend(ripcurl->Global.history, strdup(uri));
-	}
-}
-
-void history_read(void)
-{
-	FILE *fp;
-	char *line;
-	size_t nbytes = MAXLINE;
-
-	if (!(fp = fopen(ripcurl->Files.history_file, "r"))) {
-		/* history file not found - one will be created on exit */
-		return;
-	}
-
-	line = emalloc(nbytes * sizeof *line);
-
-	while (getline(&line, &nbytes, fp) != -1) {
-		chomp(line);
-		if (strlen(line) == 0) {
-			continue;
-		}
-		ripcurl->Global.history = g_list_prepend(ripcurl->Global.history, strdup(line));
-	}
-
-	if (line) {
-		free(line);
-	}
-
-	if (fclose(fp)) {
-		print_err("unable to close history file\n");
 	}
 }
 
@@ -1218,7 +1220,8 @@ void load_data(void)
 	if (!ripcurl->Files.bookmarks_file) {
 		print_err("error building bookmarks file path\n");
 	} else {
-		bookmarks_read();
+		ripcurl->Global.bookmarks = read_file(ripcurl->Files.bookmarks_file, ripcurl->Global.bookmarks);
+		ripcurl->Global.bookmarks= g_list_reverse(ripcurl->Global.bookmarks);
 	}
 
 	/* load history */
@@ -1226,7 +1229,7 @@ void load_data(void)
 	if (!ripcurl->Files.history_file) {
 		print_err("error building history file path\n");
 	} else {
-		history_read();
+		ripcurl->Global.history = read_file(ripcurl->Files.history_file, ripcurl->Global.history);
 	}
 }
 
@@ -1244,6 +1247,8 @@ void ripcurl_style(void)
 	gdk_color_parse(inputbar_fg_color, &(ripcurl->Style.inputbar_fg));
 	gdk_color_parse(statusbar_bg_color, &(ripcurl->Style.statusbar_bg));
 	gdk_color_parse(statusbar_fg_color, &(ripcurl->Style.statusbar_fg));
+	gdk_color_parse(notification_e_bg_color, &(ripcurl->Style.notification_e_bg));
+	gdk_color_parse(notification_e_fg_color, &(ripcurl->Style.notification_e_fg));
 
 	/* font */
 	ripcurl->Style.font = pango_font_description_from_string(font);

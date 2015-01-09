@@ -12,11 +12,13 @@ int history_limit	=	0;
 char *download_dir	=	"~/Downloads";
 
 /* appearance */
-char *font					=	"monospace normal 9";
-char *inputbar_bg_color		=	"#FFFFFF";
-char *inputbar_fg_color		=	"#000000";
-char *statusbar_bg_color	=	"#000000";
-char *statusbar_fg_color	=	"#FFFFFF";
+char *font						=	"monospace normal 9";
+char *inputbar_bg_color			=	"#FFFFFF";
+char *inputbar_fg_color			=	"#000000";
+char *statusbar_bg_color		=	"#000000";
+char *statusbar_fg_color		=	"#FFFFFF";
+char *notification_e_bg_color	=	"#FF0000";
+char *notification_e_fg_color	=	"#FFFFFF";
 
 gboolean show_scrollbars	=	FALSE;
 gboolean show_statusbar		=	TRUE;
@@ -27,6 +29,7 @@ Shortcut shortcuts[] = {
 	{ 0,								GDK_Escape,		sc_abort,				ALL,	{ 0,			NULL } },
 	{ GDK_CONTROL_MASK,					GDK_w,			sc_close_window,		NORMAL,	{ 0,			NULL } },
 	{ 0,								GDK_colon,		sc_focus_inputbar,		NORMAL,	{ 0,			":" } },
+	{ GDK_CONTROL_MASK,					GDK_l,			sc_focus_inputbar,		NORMAL,	{ 0,			":" } },
 	{ 0,								GDK_slash,		sc_focus_inputbar,		NORMAL,	{ 0,			"/" } },
 	{ 0,								GDK_question,	sc_focus_inputbar,		NORMAL,	{ 0,			"?" } },
 	{ 0,								GDK_o,			sc_focus_inputbar,		NORMAL,	{ 0,			":open " } },
@@ -47,9 +50,10 @@ Shortcut shortcuts[] = {
 };
 
 InputbarShortcut inputbar_shortcuts[] = {
-	{ 0,				GDK_Escape,		isc_abort,				{ 0,			NULL } },
-	{ 0,				GDK_Up,			isc_command_history,	{ PREVIOUS,		NULL } },
-	{ 0,				GDK_Down,		isc_command_history,	{ NEXT,			NULL } },
+	{ 0,				GDK_Escape,		isc_abort,					{ 0,			NULL } },
+	{ 0,				GDK_Up,			isc_command_history,		{ PREVIOUS,		NULL } },
+	{ 0,				GDK_Down,		isc_command_history,		{ NEXT,			NULL } },
+	{ 0,				GDK_BackSpace,	isc_input_manipulation,		{ DELETE_CHAR,	NULL } },
 };
 
 /* commands */
