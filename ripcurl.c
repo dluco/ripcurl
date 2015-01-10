@@ -96,6 +96,8 @@ struct _Ripcurl {
 		GdkColor inputbar_fg;
 		GdkColor statusbar_bg;
 		GdkColor statusbar_fg;
+		GdkColor statusbar_ssl_bg;
+		GdkColor statusbar_ssl_fg;
 		GdkColor notification_e_bg;
 		GdkColor notification_e_fg;
 		PangoFontDescription *font;
@@ -106,6 +108,7 @@ struct _Browser {
 	struct {
 		int mode;
 		int progress;
+		gboolean ssl;
 	} State;
 
 	struct {
@@ -600,10 +603,20 @@ void cb_download_notify_status(WebKitDownload *download, GParamSpec *pspec, Brow
 
 void cb_wv_notify_load_status(WebKitWebView *view, GParamSpec *pspec, Browser *b)
 {
+	WebKitWebFrame *frame;
+	WebKitWebDataSource *source;
+	WebKitNetworkRequest *request;
+	SoupMessage *message;
 	char *uri;
 
 	switch (webkit_web_view_get_load_status(b->UI.view)) {
 	case WEBKIT_LOAD_COMMITTED:
+		frame = webkit_web_view_get_main_frame(b->UI.view);
+		source = webkit_web_frame_get_data_source(frame);
+		request = webkit_web_data_source_get_request(source);
+		message = webkit_network_request_get_message(request);
+		b->State.ssl = soup_message_get_flags(message)
+			^ SOUP_MESSAGE_CERTIFICATE_TRUSTED;
 		break;
 	case WEBKIT_LOAD_FINISHED:
 		/* add uri to history */
@@ -1024,11 +1037,21 @@ void browser_update_uri(Browser *b)
 {
 	const char *uri = webkit_web_view_get_uri(b->UI.view);
 	char *text, *nav, *temp;
+	GdkColor *bg, *fg;
 
 	if (b->State.progress > 0 && b->State.progress < 100) {
 		asprintf(&text, "Loading... %s (%d%%)", (uri) ? uri : "", b->State.progress);
 	} else {
 		text = strdup((uri) ? uri : "[No name]");
+	}
+
+	/* ssl */
+	if (uri && strstr(uri, "https://") == uri) {
+		bg = &(ripcurl->Style.statusbar_ssl_bg);
+		fg = &(ripcurl->Style.statusbar_ssl_fg);
+	} else {
+		bg = &(ripcurl->Style.statusbar_bg);
+		fg = &(ripcurl->Style.statusbar_fg);
 	}
 
 	/* check for navigation */
@@ -1052,6 +1075,14 @@ void browser_update_uri(Browser *b)
 		free(nav);
 	}
 
+	/* apply statusbar colors */
+	gtk_widget_modify_bg(GTK_WIDGET(b->UI.statusbar), GTK_STATE_NORMAL, bg);
+	gtk_widget_modify_fg(GTK_WIDGET(b->UI.statusbar), GTK_STATE_NORMAL, fg);
+	gtk_widget_modify_fg(GTK_WIDGET(b->Statusbar.text), GTK_STATE_NORMAL, fg);
+	gtk_widget_modify_fg(GTK_WIDGET(b->Statusbar.buffer), GTK_STATE_NORMAL, fg);
+	gtk_widget_modify_fg(GTK_WIDGET(b->Statusbar.position), GTK_STATE_NORMAL, fg);
+
+	/* set text */
 	gtk_label_set_text(b->Statusbar.text, text);
 
 	free(text);
@@ -1215,6 +1246,10 @@ void load_data(void)
 		soup_session_add_feature(ripcurl->Global.soup_session, SOUP_SESSION_FEATURE(cookie_jar));
 	}
 
+	/* ssl */
+	g_object_set(G_OBJECT(ripcurl->Global.soup_session), "ssl-ca-file", ca_file, NULL);
+	g_object_set(G_OBJECT(ripcurl->Global.soup_session), "ssl-strict", strict_ssl, NULL);
+
 	/* load bookmarks */
 	ripcurl->Files.bookmarks_file = g_build_filename(ripcurl->Files.config_dir, BOOKMARKS_FILE, NULL);
 	if (!ripcurl->Files.bookmarks_file) {
@@ -1247,6 +1282,8 @@ void ripcurl_style(void)
 	gdk_color_parse(inputbar_fg_color, &(ripcurl->Style.inputbar_fg));
 	gdk_color_parse(statusbar_bg_color, &(ripcurl->Style.statusbar_bg));
 	gdk_color_parse(statusbar_fg_color, &(ripcurl->Style.statusbar_fg));
+	gdk_color_parse(statusbar_ssl_bg_color, &(ripcurl->Style.statusbar_ssl_bg));
+	gdk_color_parse(statusbar_ssl_fg_color, &(ripcurl->Style.statusbar_ssl_fg));
 	gdk_color_parse(notification_e_bg_color, &(ripcurl->Style.notification_e_bg));
 	gdk_color_parse(notification_e_fg_color, &(ripcurl->Style.notification_e_fg));
 

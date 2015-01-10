@@ -1,4 +1,6 @@
-- ssl
+- use variables for files, instead of "#define XXX_FILE"
+	- use "~/..." or CONFIG_DIR?
+- ssl 
 	- change colour of statusbar for ssl
 - web inspector
 	- use separate window, or
