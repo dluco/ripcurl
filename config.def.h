@@ -8,7 +8,7 @@ static char *ca_file =	"/etc/ssl/certs/ca-certificates.crt";
 char *user_agent	=	NULL;
 char *home_page		=	"https://duckduckgo.com";
 int history_limit	=	0;
-int strict_ssl		=	FALSE;
+gboolean strict_ssl	=	FALSE;
 
 /* download settings */
 char *download_dir	=	"~/Downloads";
@@ -19,8 +19,8 @@ char *inputbar_bg_color			=	"#000000";
 char *inputbar_fg_color			=	"#FFFFFF";
 char *statusbar_bg_color		=	"#000000";
 char *statusbar_fg_color		=	"#FFFFFF";
-char *statusbar_ssl_bg_color	=	"#000000";
-char *statusbar_ssl_fg_color	=	"#00FF00";
+char *statusbar_ssl_bg_color	=	"#9FBC00";
+char *statusbar_ssl_fg_color	=	"#000000";
 char *notification_e_bg_color	=	"#FF0000";
 char *notification_e_fg_color	=	"#FFFFFF";
 
