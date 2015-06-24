@@ -414,3 +414,25 @@ GList *read_file(char *filename, GList *list)
 
 	return list;
 }
+
+/* TODO */
+char *build_path(char *arg)
+{
+	char *path, *p;
+
+	if (arg[0] == '/') {
+		path = strdup(arg);
+	} else if (arg[0] == '~') {
+		if (arg[1] == '/') {
+			path = strconcat(g_get_home_dir(), &arg[1], NULL);
+		} else {
+			path = strconcat(g_get_home_dir(), "/", &arg[1], NULL);
+		}
+	} else {
+		p = g_get_current_dir();
+		path = strconcat(p, "/", arg, NULL);
+		free(p);
+	}
+
+	return path;
+}

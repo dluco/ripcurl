@@ -1,32 +1,36 @@
 /* files */
-#define BOOKMARKS_FILE	"bookmarks"
-#define HISTORY_FILE	"history"
-#define COOKIE_FILE		"cookies"
-static char *ca_file =	"/etc/ssl/certs/ca-certificates.crt";
+static char *config_dir		=	"~/.config/ripcurl";
+static char *bookmarks_file	=	"bookmarks";
+static char *history_file	=	"history";
+static char *cookie_file	=	"cookies";
+static char *ca_file 		=	"/etc/ssl/certs/ca-certificates.crt";
 
 /* browser settings */
-char *user_agent	=	NULL;
-char *home_page		=	"https://duckduckgo.com";
-int history_limit	=	0;
-gboolean strict_ssl	=	FALSE;
+char *user_agent			=	NULL;
+char *home_page				=	"https://duckduckgo.com";
+int history_limit			=	0;
+gboolean strict_ssl			=	FALSE;
+gboolean private_browsing	=	FALSE;
+gboolean developer_extras	=	TRUE;
 
 /* download settings */
 char *download_dir	=	"~/Downloads";
 
 /* appearance */
-char *font						=	"monospace normal 9";
-char *inputbar_bg_color			=	"#000000";
-char *inputbar_fg_color			=	"#FFFFFF";
-char *statusbar_bg_color		=	"#000000";
-char *statusbar_fg_color		=	"#FFFFFF";
-char *statusbar_ssl_bg_color	=	"#9FBC00";
-char *statusbar_ssl_fg_color	=	"#000000";
-char *notification_e_bg_color	=	"#FF0000";
-char *notification_e_fg_color	=	"#FFFFFF";
+char *font								=	"monospace normal 9";
+char *inputbar_bg_color					=	"#000000";
+char *inputbar_fg_color					=	"#FFFFFF";
+char *statusbar_bg_color				=	"#000000";
+char *statusbar_fg_color				=	"#FFFFFF";
+char *statusbar_ssl_trust_bg_color		=	"#000000";
+char *statusbar_ssl_trust_fg_color		=	"#9FBC00";
+char *statusbar_ssl_untrust_bg_color	=	"#000000";
+char *statusbar_ssl_untrust_fg_color	=	"#FF0000";
+char *notification_e_bg_color			=	"#FF0000";
+char *notification_e_fg_color			=	"#FFFFFF";
 
 gboolean show_scrollbars	=	FALSE;
 gboolean show_statusbar		=	TRUE;
-gboolean private_browsing	=	FALSE;
 
 /* shortcuts */
 Shortcut shortcuts[] = {
@@ -68,8 +72,8 @@ Command commands[] = {
 	{ "open",		"o",	cmd_open },
 	{ "print",		0,		cmd_print },
 	{ "quit",		"q",	cmd_quit },
+	{ "quitall",	"Q",	cmd_quitall },
 	{ "reload",		"r",	cmd_reload },
-	{ "quitall",	0,		cmd_quitall },
 	{ "winopen",	"W",	cmd_winopen },
 };
 

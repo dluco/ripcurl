@@ -96,8 +96,10 @@ struct _Ripcurl {
 		GdkColor inputbar_fg;
 		GdkColor statusbar_bg;
 		GdkColor statusbar_fg;
-		GdkColor statusbar_ssl_bg;
-		GdkColor statusbar_ssl_fg;
+		GdkColor statusbar_ssl_trust_bg;
+		GdkColor statusbar_ssl_trust_fg;
+		GdkColor statusbar_ssl_untrust_bg;
+		GdkColor statusbar_ssl_untrust_fg;
 		GdkColor notification_e_bg;
 		GdkColor notification_e_fg;
 		PangoFontDescription *font;
@@ -109,13 +111,16 @@ struct _Browser {
 		int mode;
 		int progress;
 		gboolean ssl;
+		gboolean inspecting;
 	} State;
 
 	struct {
 		GtkWidget *window;
 		GtkBox *box;
+		GtkPaned *pane;
 		GtkScrolledWindow *scrolled_window;
 		WebKitWebView *view;
+		WebKitWebInspector *inspector;
 		GtkWidget *statusbar;
 		GtkBox *statusbar_entries;
 		GtkEntry *inputbar;
@@ -164,6 +169,7 @@ gboolean scmd_search(Browser *b, char *input, const Arg *arg, gboolean activate)
 
 /* callbacks */
 void cb_win_destroy(GtkWidget *widget, Browser *b);
+
 gboolean cb_wv_console_message(WebKitWebView *view, char *message, int line, char *source_id, Browser *b);
 gboolean cb_wv_keypress(GtkWidget *widget, GdkEventKey *event, Browser *b);
 WebKitWebView *cb_wv_create_web_view(WebKitWebView *v, WebKitWebFrame *f, Browser *b);
@@ -176,6 +182,11 @@ gboolean cb_wv_download_requested(WebKitWebView *view, WebKitDownload *download,
 void cb_download_notify_status(WebKitDownload *download, GParamSpec *pspec, Browser *b);
 void cb_wv_scrolled(GtkAdjustment *adjustment, Browser *b);
 
+WebKitWebView *cb_inspector_new(WebKitWebInspector *inspector, WebKitWebView *view, Browser *b);
+gboolean cb_inspector_show(WebKitWebInspector *inspector, Browser *b);
+gboolean cb_inspector_close(WebKitWebInspector *inspector, Browser *b);
+void cb_inspector_finished(WebKitWebInspector *inspector, Browser *b);
+
 gboolean cb_inputbar_keypress(GtkWidget *widget, GdkEventKey *event, Browser *b);
 void cb_inputbar_changed(GtkEntry *entry, Browser *b);
 void cb_inputbar_activate(GtkEntry *entry, Browser *b);
@@ -184,6 +195,7 @@ void cb_inputbar_activate(GtkEntry *entry, Browser *b);
 Browser *browser_new(void);
 void browser_show(Browser * b);
 void browser_apply_settings(Browser *b);
+char *browser_get_uri(Browser *b);
 void browser_change_mode(Browser *b, int mode);
 void browser_nav_history(Browser *b, int direction);
 void browser_search_and_highlight(Browser *b, char *input, int direction);
@@ -611,12 +623,16 @@ void cb_wv_notify_load_status(WebKitWebView *view, GParamSpec *pspec, Browser *b
 
 	switch (webkit_web_view_get_load_status(b->UI.view)) {
 	case WEBKIT_LOAD_COMMITTED:
-		frame = webkit_web_view_get_main_frame(b->UI.view);
-		source = webkit_web_frame_get_data_source(frame);
-		request = webkit_web_data_source_get_request(source);
-		message = webkit_network_request_get_message(request);
-		b->State.ssl = soup_message_get_flags(message)
-			^ SOUP_MESSAGE_CERTIFICATE_TRUSTED;
+		uri = browser_get_uri(b);
+		if (strstr(uri, "https://") == uri) {
+			/* get ssl state */
+			frame = webkit_web_view_get_main_frame(b->UI.view);
+			source = webkit_web_frame_get_data_source(frame);
+			request = webkit_web_data_source_get_request(source);
+			message = webkit_network_request_get_message(request);
+			b->State.ssl = soup_message_get_flags(message)
+				^ SOUP_MESSAGE_CERTIFICATE_TRUSTED;
+		}
 		break;
 	case WEBKIT_LOAD_FINISHED:
 		/* add uri to history */
@@ -629,7 +645,7 @@ void cb_wv_notify_load_status(WebKitWebView *view, GParamSpec *pspec, Browser *b
 		break;
 	}
 
-	/* update browser (statusbar, position) */
+	/* update browser (statusbar, progress, position) */
 	browser_update(b);
 }
 
@@ -651,6 +667,48 @@ void cb_wv_notify_title(WebKitWebView *view, GParamSpec *pspec, Browser *b)
 void cb_wv_scrolled(GtkAdjustment *adjustment, Browser *b)
 {
 	browser_update_position(b);
+}
+
+WebKitWebView *cb_inspector_new(WebKitWebInspector *inspector, WebKitWebView *view, Browser *b)
+{
+	return WEBKIT_WEB_VIEW(webkit_web_view_new());
+}
+
+gboolean cb_inspector_show(WebKitWebInspector *inspector, Browser *b)
+{
+	GtkWidget *view;
+
+	if (b->State.inspecting) {
+		return FALSE;
+	}
+
+	view = GTK_WIDGET(webkit_web_inspector_get_web_view(inspector));
+	gtk_paned_pack2(b->UI.pane, view, TRUE, TRUE);
+	gtk_widget_show(view);
+	b->State.inspecting = TRUE;
+
+	return TRUE;
+}
+
+gboolean cb_inspector_close(WebKitWebInspector *inspector, Browser *b)
+{
+	GtkWidget *view;
+
+	if (!b->State.inspecting) {
+		return FALSE;
+	}
+
+	view = GTK_WIDGET(webkit_web_inspector_get_web_view(inspector));
+	gtk_widget_hide(view);
+	gtk_widget_destroy(view);
+	b->State.inspecting = FALSE;
+
+	return TRUE;
+}
+
+void cb_inspector_finished(WebKitWebInspector *inspector, Browser *b)
+{
+	free(b->UI.inspector);
 }
 
 gboolean cb_inputbar_keypress(GtkWidget *widget, GdkEventKey *event, Browser *b)
@@ -782,6 +840,7 @@ Browser *browser_new(void)
 
 	b->UI.window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
 	b->UI.box = GTK_BOX(gtk_vbox_new(FALSE, 0));
+	b->UI.pane = GTK_PANED(gtk_vpaned_new());
 	b->UI.scrolled_window = GTK_SCROLLED_WINDOW(gtk_scrolled_window_new(NULL, NULL));
 	b->UI.view = WEBKIT_WEB_VIEW(webkit_web_view_new());
 	b->UI.statusbar = gtk_event_box_new();
@@ -791,6 +850,9 @@ Browser *browser_new(void)
 	/* window */
 	gtk_window_set_title(GTK_WINDOW(b->UI.window), "ripcurl");
 	g_signal_connect(G_OBJECT(b->UI.window), "destroy", G_CALLBACK(cb_win_destroy), b);
+
+	/* pane */
+	gtk_paned_pack1(b->UI.pane, GTK_WIDGET(b->UI.scrolled_window), TRUE, TRUE);
 
 	/* box */
 	gtk_container_add(GTK_CONTAINER(b->UI.window), GTK_WIDGET(b->UI.box));
@@ -812,6 +874,17 @@ Browser *browser_new(void)
 
 	gtk_container_add(GTK_CONTAINER(b->UI.scrolled_window), GTK_WIDGET(b->UI.view));
 
+	/* inspector */
+	if (developer_extras) {
+		b->UI.inspector = WEBKIT_WEB_INSPECTOR(webkit_web_view_get_inspector(b->UI.view));
+		g_signal_connect(G_OBJECT(b->UI.inspector), "inspect-web-view", G_CALLBACK(cb_inspector_new), b);
+		g_signal_connect(G_OBJECT(b->UI.inspector), "show-window", G_CALLBACK(cb_inspector_show), b);
+		g_signal_connect(G_OBJECT(b->UI.inspector), "close-window", G_CALLBACK(cb_inspector_close), b);
+		g_signal_connect(G_OBJECT(b->UI.inspector), "finished", G_CALLBACK(cb_inspector_finished), b);
+
+		b->State.inspecting = FALSE;
+	}
+
 	/* statusbar */
 	b->Statusbar.text = GTK_LABEL(gtk_label_new(NULL));
 	b->Statusbar.buffer = GTK_LABEL(gtk_label_new(NULL));
@@ -829,7 +902,7 @@ Browser *browser_new(void)
 	g_signal_connect(G_OBJECT(b->UI.inputbar), "activate", G_CALLBACK(cb_inputbar_activate), b);
 	
 	/* packing */
-	gtk_box_pack_start(b->UI.box, GTK_WIDGET(b->UI.scrolled_window), TRUE, TRUE, 0);
+	gtk_box_pack_start(b->UI.box, GTK_WIDGET(b->UI.pane), TRUE, TRUE, 0);
 	gtk_box_pack_start(b->UI.box, GTK_WIDGET(b->UI.statusbar), FALSE, FALSE, 0);
 	gtk_box_pack_start(b->UI.box, GTK_WIDGET(b->UI.inputbar), FALSE, FALSE, 0);
 
@@ -901,6 +974,16 @@ void browser_apply_settings(Browser *b)
 	gtk_widget_modify_text(GTK_WIDGET(b->UI.inputbar), GTK_STATE_NORMAL, &(ripcurl->Style.inputbar_fg));
 	gtk_widget_modify_font(GTK_WIDGET(b->UI.inputbar), ripcurl->Style.font);
 
+}
+
+char *browser_get_uri(Browser *b)
+{
+	char *uri;
+
+	if (!(uri = (char *)webkit_web_view_get_uri(b->UI.view))) {
+		uri = "about:blank";
+	}
+	return uri;
 }
 
 void browser_change_mode(Browser *b, int mode)
@@ -1035,45 +1118,52 @@ void browser_zoom(Browser *b, int mode)
 
 void browser_update_uri(Browser *b)
 {
-	const char *uri = webkit_web_view_get_uri(b->UI.view);
-	char *text, *nav, *temp;
+	char *uri, *text, *nav, *temp;
 	GdkColor *bg, *fg;
 
+	uri = browser_get_uri(b);
+
+	/* FIXME */
 	if (b->State.progress > 0 && b->State.progress < 100) {
-		asprintf(&text, "Loading... %s (%d%%)", (uri) ? uri : "", b->State.progress);
+		asprintf(&text, "Loading... %s (%d%%)", uri, b->State.progress);
 	} else {
-		text = strdup((uri) ? uri : "[No name]");
+		text = strdup(uri);
 	}
 
 	/* ssl */
-	if (uri && strstr(uri, "https://") == uri) {
-		bg = &(ripcurl->Style.statusbar_ssl_bg);
-		fg = &(ripcurl->Style.statusbar_ssl_fg);
+	if (strstr(uri, "https://") == uri) {
+		if (b->State.ssl) {
+			/* ssl trusted */
+			bg = &(ripcurl->Style.statusbar_ssl_trust_bg);
+			fg = &(ripcurl->Style.statusbar_ssl_trust_fg);
+		} else {
+			/* ssl untrusted */
+			bg = &(ripcurl->Style.statusbar_ssl_untrust_bg);
+			fg = &(ripcurl->Style.statusbar_ssl_untrust_fg);
+		}
 	} else {
 		bg = &(ripcurl->Style.statusbar_bg);
 		fg = &(ripcurl->Style.statusbar_fg);
 	}
 
 	/* check for navigation */
-	if (uri) {
-		nav = strdup("");
+	nav = strdup("");
 
-		if (webkit_web_view_can_go_back(b->UI.view)) {
-			strappend(nav, "-");
-		}
-		if (webkit_web_view_can_go_forward(b->UI.view)) {
-			strappend(nav, "+");
-		}
-
-		if (strlen(nav) > 0) {
-			/* navigation possible */
-			temp = strconcat(text, " [", nav, "]", NULL);
-			free(text);
-			text = temp;
-		}
-
-		free(nav);
+	if (webkit_web_view_can_go_back(b->UI.view)) {
+		strappend(nav, "-");
 	}
+	if (webkit_web_view_can_go_forward(b->UI.view)) {
+		strappend(nav, "+");
+	}
+
+	if (strlen(nav) > 0) {
+		/* navigation possible */
+		temp = strconcat(text, " [", nav, "]", NULL);
+		free(text);
+		text = temp;
+	}
+
+	free(nav);
 
 	/* apply statusbar colors */
 	gtk_widget_modify_bg(GTK_WIDGET(b->UI.statusbar), GTK_STATE_NORMAL, bg);
@@ -1236,9 +1326,11 @@ void ripcurl_init(void)
 void load_data(void)
 {
 	SoupCookieJar *cookie_jar;
+	GTlsDatabase *tlsdb;
+	GError *error = NULL;
 
 	/* load cookies */
-	ripcurl->Files.cookie_file = g_build_filename(ripcurl->Files.config_dir, COOKIE_FILE, NULL);
+	ripcurl->Files.cookie_file = g_build_filename(ripcurl->Files.config_dir, cookie_file, NULL);
 	if (!ripcurl->Files.cookie_file) {
 		print_err("error building cookie file path\n");
 	} else {
@@ -1247,11 +1339,16 @@ void load_data(void)
 	}
 
 	/* ssl */
-	g_object_set(G_OBJECT(ripcurl->Global.soup_session), "ssl-ca-file", ca_file, NULL);
+	tlsdb = g_tls_file_database_new(ca_file, &error);
+	if (error) {
+		print_err("error loading ssl database %s: %s\n", ca_file, error->message);
+		g_error_free(error);
+	}
+	g_object_set(G_OBJECT(ripcurl->Global.soup_session), "tls-database", tlsdb, NULL);
 	g_object_set(G_OBJECT(ripcurl->Global.soup_session), "ssl-strict", strict_ssl, NULL);
 
 	/* load bookmarks */
-	ripcurl->Files.bookmarks_file = g_build_filename(ripcurl->Files.config_dir, BOOKMARKS_FILE, NULL);
+	ripcurl->Files.bookmarks_file = g_build_filename(ripcurl->Files.config_dir, bookmarks_file, NULL);
 	if (!ripcurl->Files.bookmarks_file) {
 		print_err("error building bookmarks file path\n");
 	} else {
@@ -1260,7 +1357,7 @@ void load_data(void)
 	}
 
 	/* load history */
-	ripcurl->Files.history_file = g_build_filename(ripcurl->Files.config_dir, HISTORY_FILE, NULL);
+	ripcurl->Files.history_file = g_build_filename(ripcurl->Files.config_dir, history_file, NULL);
 	if (!ripcurl->Files.history_file) {
 		print_err("error building history file path\n");
 	} else {
@@ -1273,6 +1370,7 @@ void ripcurl_settings(void)
 	if (user_agent) {
 		g_object_set(G_OBJECT(ripcurl->Global.webkit_settings), "user-agent", user_agent, NULL);
 	}
+	g_object_set(G_OBJECT(ripcurl->Global.webkit_settings), "enable-developer-extras", developer_extras, NULL);
 }
 
 void ripcurl_style(void)
@@ -1282,8 +1380,10 @@ void ripcurl_style(void)
 	gdk_color_parse(inputbar_fg_color, &(ripcurl->Style.inputbar_fg));
 	gdk_color_parse(statusbar_bg_color, &(ripcurl->Style.statusbar_bg));
 	gdk_color_parse(statusbar_fg_color, &(ripcurl->Style.statusbar_fg));
-	gdk_color_parse(statusbar_ssl_bg_color, &(ripcurl->Style.statusbar_ssl_bg));
-	gdk_color_parse(statusbar_ssl_fg_color, &(ripcurl->Style.statusbar_ssl_fg));
+	gdk_color_parse(statusbar_ssl_trust_bg_color, &(ripcurl->Style.statusbar_ssl_trust_bg));
+	gdk_color_parse(statusbar_ssl_trust_fg_color, &(ripcurl->Style.statusbar_ssl_trust_fg));
+	gdk_color_parse(statusbar_ssl_untrust_bg_color, &(ripcurl->Style.statusbar_ssl_untrust_bg));
+	gdk_color_parse(statusbar_ssl_untrust_fg_color, &(ripcurl->Style.statusbar_ssl_untrust_fg));
 	gdk_color_parse(notification_e_bg_color, &(ripcurl->Style.notification_e_bg));
 	gdk_color_parse(notification_e_fg_color, &(ripcurl->Style.notification_e_fg));
 
