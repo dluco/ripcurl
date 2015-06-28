@@ -9,3 +9,11 @@
 	- allow naming of file
 	- specify download path
 		- suggest ~/Downloads/<filename>
+
+- only have one inputbar/statusbar:
+	- from right:
+		- scroll position
+		- uri & link-hover
+		- status text
+		- input text
+

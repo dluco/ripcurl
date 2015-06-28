@@ -643,7 +643,7 @@ void cb_wv_notify_load_status(WebKitWebView *view, GParamSpec *pspec, Browser *b
 		break;
 	case WEBKIT_LOAD_FINISHED:
 		/* add uri to history */
-		if ((uri = (char *)webkit_web_view_get_uri(b->UI.view))) {
+		if (!private_browsing && (uri = (char *)webkit_web_view_get_uri(b->UI.view))) {
 			history_add(uri);
 		}
 		b->State.progress = 100;
@@ -1342,12 +1342,14 @@ void load_data(void)
 	GError *error = NULL;
 
 	/* load cookies */
-	ripcurl->Files.cookie_file = g_build_filename(ripcurl->Files.config_dir, cookie_file, NULL);
-	if (!ripcurl->Files.cookie_file) {
-		print_err("error building cookie file path\n");
-	} else {
-		cookie_jar = soup_cookie_jar_text_new(ripcurl->Files.cookie_file, FALSE);
-		soup_session_add_feature(ripcurl->Global.soup_session, SOUP_SESSION_FEATURE(cookie_jar));
+	if (!private_browsing) {
+		ripcurl->Files.cookie_file = g_build_filename(ripcurl->Files.config_dir, cookie_file, NULL);
+		if (!ripcurl->Files.cookie_file) {
+			print_err("error building cookie file path\n");
+		} else {
+			cookie_jar = soup_cookie_jar_text_new(ripcurl->Files.cookie_file, FALSE);
+			soup_session_add_feature(ripcurl->Global.soup_session, SOUP_SESSION_FEATURE(cookie_jar));
+		}
 	}
 
 	/* ssl */
