@@ -24,6 +24,7 @@ enum {
 	ZOOM_OUT,
 	ZOOM_RESET,
 	DELETE_CHAR,
+	APPEND_URL,
 };
 
 /* modes */
@@ -247,10 +248,16 @@ void sc_abort(Browser *b, const Arg *arg)
 
 void sc_focus_inputbar(Browser *b, const Arg *arg)
 {
-	char *clipboard_text;
+	char *data, *clipboard_text;
 
 	if (arg->data) {
-		browser_notify(b, DEFAULT, arg->data);
+		if (arg->n == APPEND_URL) {
+			asprintf(&data, "%s%s", arg->data, webkit_web_view_get_uri(b->UI.view));
+		} else {
+			data = strdup(arg->data);
+		}
+		browser_notify(b, DEFAULT, data);
+		free(data);
 
 		/* save primary selection - will be overwritten on grab_focus */
 		clipboard_text = gtk_clipboard_wait_for_text(gtk_clipboard_get(GDK_SELECTION_PRIMARY));
@@ -1203,11 +1210,16 @@ void browser_update_position(Browser *b)
 
 void browser_update(Browser *b)
 {
-	const char *title;
+	const char *view_title;
+	char *title = NULL;
 
 	/* update title */
-	title = webkit_web_view_get_title(b->UI.view);
-	gtk_window_set_title(GTK_WINDOW(b->UI.window), (title) ? title : "ripcurl");
+	view_title = webkit_web_view_get_title(b->UI.view);
+	if (view_title) {
+		asprintf(&title, "%s%s", view_title, (private_browsing) ? " [P]" : "");
+	}
+	gtk_window_set_title(GTK_WINDOW(b->UI.window), (title && strlen(title) > 0) ? title : "ripcurl");
+	free(title);
 
 	browser_update_uri(b);
 	browser_update_position(b);
@@ -1371,6 +1383,7 @@ void ripcurl_settings(void)
 		g_object_set(G_OBJECT(ripcurl->Global.webkit_settings), "user-agent", user_agent, NULL);
 	}
 	g_object_set(G_OBJECT(ripcurl->Global.webkit_settings), "enable-developer-extras", developer_extras, NULL);
+	g_object_set(G_OBJECT(ripcurl->Global.webkit_settings), "enable-private-browsing", private_browsing, NULL);
 }
 
 void ripcurl_style(void)
@@ -1440,8 +1453,18 @@ void cleanup(void)
 int main(int argc, char *argv[])
 {
 	Browser *b;
+	char **arg, *uri = NULL;
 
 	gtk_init(&argc, &argv);
+
+	for (arg = argv+1; *arg; arg++) {
+		if (strcmp_s(*arg, "-p") == 0) {
+			private_browsing = TRUE;
+		} else {
+			uri = *arg;
+			break;
+		}
+	}
 
 	/* init toplevel struct */
 	ripcurl = emalloc(sizeof *ripcurl);
@@ -1454,8 +1477,8 @@ int main(int argc, char *argv[])
 	/* init first browser window */
 	b = browser_new();
 
-	if (argc > 1) {
-		browser_load_uri(b, argv[1]);
+	if (uri) {
+		browser_load_uri(b, uri);
 	} else {
 		browser_load_uri(b, home_page);
 	}
